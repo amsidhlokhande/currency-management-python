@@ -14,6 +14,17 @@ Write-Host "=========================================================" -Foregrou
 Write-Host "  Agent 3: Multi-Stage Docker Build & Push Pipeline" -ForegroundColor Cyan
 Write-Host "=========================================================" -ForegroundColor Cyan
 
+# 0. Synchronize Centralized Constraints
+Write-Host "`n[0/4] Synchronizing centralized dependency constraints (BOM)..." -ForegroundColor Green
+$centralConstraints = Join-Path $PSScriptRoot "central-dependency-management\constraints.txt"
+if (Test-Path $centralConstraints) {
+    Copy-Item $centralConstraints -Destination "currency-exchange-service-python\constraints.txt" -Force
+    Copy-Item $centralConstraints -Destination "currency-conversion-service-python\constraints.txt" -Force
+    Write-Host "Enforced central constraints to microservices: $centralConstraints" -ForegroundColor Cyan
+} else {
+    Write-Warning "Central constraints file not found at $centralConstraints"
+}
+
 # 1. Build Currency Exchange Service
 Write-Host "`n[1/4] Building Currency Exchange Service image..." -ForegroundColor Green
 docker build -t "currency-exchange-service-python:$Tag" ./currency-exchange-service-python

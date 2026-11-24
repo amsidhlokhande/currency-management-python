@@ -21,9 +21,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-COPY requirements.txt .
+ARG CONSTRAINT_URL=""
+
+COPY requirements.txt constraints.txt* ./
 RUN pip install --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+    if [ -f "constraints.txt" ]; then \
+        echo "==> Enforcing centralized constraints from local constraints.txt" && \
+        pip install --no-cache-dir -r requirements.txt -c constraints.txt; \
+    elif [ -n "$CONSTRAINT_URL" ]; then \
+        echo "==> Enforcing centralized constraints from remote URL: $CONSTRAINT_URL" && \
+        pip install --no-cache-dir -r requirements.txt -c "$CONSTRAINT_URL"; \
+    else \
+        echo "==> Installing requirements without constraints" && \
+        pip install --no-cache-dir -r requirements.txt; \
+    fi
 
 # --------------------------------------------------------
 # Stage 2: Hardened Production Runtime

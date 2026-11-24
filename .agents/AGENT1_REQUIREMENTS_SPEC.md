@@ -112,7 +112,7 @@ Both services adhere strictly to the following standardized modular structure:
 ├── .env                  # Environment variables & error code configurations
 ├── app.py                # Main application bootstrap & WSGI runner
 ├── constants.py          # Centralized constants (.env values, error mappings)
-├── requirements.txt      # Python dependencies
+├── requirements.txt      # Python dependencies (versionless, governed by central BOM)
 ├── Dockerfile            # Multi-stage production container definition
 ├── README.md             # Publication-grade Mermaid architecture docs
 ├── data/                 # Sample data files (rates CSV)
@@ -126,3 +126,13 @@ Both services adhere strictly to the following standardized modular structure:
     ├── exception/        # Custom domain exceptions & centralized error handler
     └── utils/            # JSON logger with PII masking, latency interceptors
 ```
+
+---
+
+## 6. Centralized Constraint Dependency Architecture (BOM Pattern)
+
+To resolve the vulnerability patching overhead across 36+ microservices:
+1. **Central BOM Authority**: `central-dependency-management/constraints.txt` defines all approved library versions and security patches centrally.
+2. **Decoupled Service Specifications**: Microservice `requirements.txt` files declare dependencies without hardcoded versions.
+3. **Automated Enforcement**: Multi-stage Docker builds and local environments enforce constraints via `pip install -r requirements.txt -c constraints.txt`.
+4. **SLA Acceleration**: CVE patches require modifying exactly 1 central file rather than 36 separate microservice repositories.

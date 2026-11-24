@@ -93,3 +93,6 @@ service-account*.json
 
 # --- Docker Local Overrides ---
 docker-compose.override.yml
+
+# --- Transient Synced Constraint Copies ---
+currency-*/constraints.txt

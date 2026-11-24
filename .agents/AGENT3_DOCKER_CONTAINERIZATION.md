@@ -60,9 +60,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-COPY requirements.txt .
+ARG CONSTRAINT_URL=""
+COPY requirements.txt constraints.txt* ./
 RUN pip install --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+    if [ -f "constraints.txt" ]; then \
+        pip install --no-cache-dir -r requirements.txt -c constraints.txt; \
+    elif [ -n "$CONSTRAINT_URL" ]; then \
+        pip install --no-cache-dir -r requirements.txt -c "$CONSTRAINT_URL"; \
+    else \
+        pip install --no-cache-dir -r requirements.txt; \
+    fi
 
 # ==========================================
 # Stage 2: Hardened Runtime Environment

@@ -1,7 +1,16 @@
-Flask>=3.1.0
-python-json-logger>=2.0.7
-boto3>=1.34.0
-pytest>=8.0.0
-gunicorn>=23.0.0
-waitress>=3.0.0
-requests>=2.31.0
+# ==============================================================================
+# Currency Exchange Service - Dependencies
+# ==============================================================================
+# In accordance with the Centralized Constraint Dependency Architecture (BOM),
+# package versions are intentionally NOT hardcoded here.
+# Exact versions, security updates, and CVE patches are centrally enforced via:
+# central-dependency-management/constraints.txt
+# ==============================================================================
+
+Flask
+python-json-logger
+boto3
+pytest
+gunicorn
+waitress
+requests
