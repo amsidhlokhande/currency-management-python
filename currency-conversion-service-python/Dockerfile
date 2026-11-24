@@ -21,9 +21,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-COPY requirements.txt .
-RUN pip install --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+# Install uv from official binary image for ultra-fast, reproducible dependency resolution
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+
+# Copy dependencies and central overrides
+COPY requirements.txt overrides.txt* ./
+RUN if [ -f "overrides.txt" ]; then \
+        echo "==> Enforcing centralized dependencies via uv --override overrides.txt" && \
+        uv pip install --no-cache -r requirements.txt --override overrides.txt; \
+    else \
+        echo "==> Installing requirements via uv" && \
+        uv pip install --no-cache -r requirements.txt; \
+    fi
 
 # --------------------------------------------------------
 # Stage 2: Hardened Production Runtime

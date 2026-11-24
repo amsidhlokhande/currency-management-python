@@ -93,3 +93,10 @@ service-account*.json
 
 # --- Docker Local Overrides ---
 docker-compose.override.yml
+
+# --- uv & Centralized Dependency Temporary Copies ---
+.uv/
+currency-exchange-service-python/overrides.txt
+currency-conversion-service-python/overrides.txt
+currency-exchange-service-python/constraints.txt
+currency-conversion-service-python/constraints.txt

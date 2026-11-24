@@ -126,3 +126,15 @@ Both services adhere strictly to the following standardized modular structure:
     ├── exception/        # Custom domain exceptions & centralized error handler
     └── utils/            # JSON logger with PII masking, latency interceptors
 ```
+
+---
+
+## 4. Centralized Dependency Management Specification (Solution 3: uv Workspace & Unified Lockfile)
+
+### 4.1 Solution Overview
+To solve OSS vulnerability patching across 36+ Python microservices without touching individual microservice repositories:
+- **Root Workspace**: Root [pyproject.toml](file:///C:/Users/amsid/projects/python_projects/currency-management-python/pyproject.toml) declares `[tool.uv.workspace]` defining all member microservices.
+- **Central Governance**: `[tool.uv] override-dependencies` array in root `pyproject.toml` pins all library versions (the Python equivalent of Maven's `<dependencyManagement>` in parent `pom.xml`).
+- **Single Source of Truth**: Unified [uv.lock](file:///C:/Users/amsid/projects/python_projects/currency-management-python/uv.lock) locks all direct and transitive dependencies deterministically.
+- **Zero Hardcoded Versions in Services**: Individual service [requirements.txt](file:///C:/Users/amsid/projects/python_projects/currency-management-python/currency-exchange-service-python/requirements.txt) declare only abstract package names (e.g., `flask`, `requests`, `boto3`, `pytest`) without version pins.
+- **Standalone Container Builds**: Central [overrides.txt](file:///C:/Users/amsid/projects/python_projects/currency-management-python/overrides.txt) allows isolated Docker builds with `uv pip install --override overrides.txt`.

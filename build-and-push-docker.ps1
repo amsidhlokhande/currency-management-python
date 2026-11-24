@@ -11,8 +11,15 @@ param (
 $ErrorActionPreference = "Stop"
 
 Write-Host "=========================================================" -ForegroundColor Cyan
-Write-Host "  Agent 3: Multi-Stage Docker Build & Push Pipeline" -ForegroundColor Cyan
+Write-Host "  Agent 3: Multi-Stage Docker Build & Push Pipeline (uv)" -ForegroundColor Cyan
 Write-Host "=========================================================" -ForegroundColor Cyan
+
+# 0. Sync central overrides.txt into microservice build contexts
+if (Test-Path "overrides.txt") {
+    Write-Host "`n[0/4] Syncing central overrides.txt into microservice build contexts..." -ForegroundColor Green
+    Copy-Item -Path "overrides.txt" -Destination "currency-exchange-service-python/overrides.txt" -Force
+    Copy-Item -Path "overrides.txt" -Destination "currency-conversion-service-python/overrides.txt" -Force
+}
 
 # 1. Build Currency Exchange Service
 Write-Host "`n[1/4] Building Currency Exchange Service image..." -ForegroundColor Green

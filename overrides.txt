@@ -1,0 +1,22 @@
+# ==============================================================================
+# Centralized Workspace Dependency Overrides (uv BOM)
+# Architecture: Solution 3 - uv Workspaces & Centralized Dependency Resolution
+# ==============================================================================
+# This file is used by `uv pip install -r requirements.txt --override overrides.txt`
+# during standalone microservice builds, ensuring all microservices inherit the exact
+# same security patches and dependency versions from a single centralized definition.
+# ==============================================================================
+
+Flask==3.1.0
+werkzeug==3.1.3
+python-json-logger==2.0.7
+requests==2.32.3
+urllib3==2.2.3
+gunicorn==23.0.0
+waitress==3.0.1
+pytest==8.3.3
+boto3==1.35.40
+botocore==1.35.40
+certifi==2024.8.30
+idna==3.10
+charset-normalizer==3.4.0
