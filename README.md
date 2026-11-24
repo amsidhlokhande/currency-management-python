@@ -19,7 +19,13 @@ A production-grade, financial microservices architecture implemented in **Python
 5. [High-Level Architecture & End-to-End Flow](#-high-level-architecture--end-to-end-flow)
 6. [Centralized Error Handling & Error Taxonomy](#-centralized-error-handling--error-taxonomy)
 7. [Enterprise Standards Implemented](#-enterprise-standards-implemented)
-8. [Local Quickstart & Execution](#-local-quickstart--execution)
+8. [Local Quickstart & Dual Docker Execution](#-local-quickstart--dual-docker-execution)
+   - [8.1 Automated Unit Tests](#1-run-automated-unit-test-suites-1515-passed)
+   - [8.2 Dual Docker Compose Architecture](#2-dual-docker-compose-architecture)
+   - [8.3 Automation via `build-and-push-docker.ps1`](#3-automation-via-build-and-push-dockerps1)
+   - [8.4 Direct Docker Compose CLI Commands](#4-direct-docker-compose-cli-commands)
+   - [8.5 Environment Variables Configuration](#5-environment-variables-configuration)
+   - [8.6 Smoke Testing & Live API Verification](#6-smoke-testing--live-api-verification)
 
 ---
 
@@ -106,8 +112,16 @@ currency-management-python/
 │       ├── utils/                                 # JSON logging & latency interceptor
 │       └── route/                                 # Exchange, actuator & Swagger routes
 ├── deploy/                                        # Cloud Deployment Runbooks & YAMLs
-│   └── cloud-run/
-├── docker-compose.yml                             # Local dual-service mesh
+│   └── cloud-run/                                 # Google Cloud Run Knative manifests & scripts
+├── enterprise-core-python/                        # Shared Enterprise Starter Library (v1.0.0)
+│   ├── pyproject.toml                             # Package definition & pinned security deps
+│   ├── setup.py                                   # Setuptools build configuration
+│   ├── enterprise_core/                           # Logging, Exception, Actuator, Swagger
+│   └── tests/                                     # Automated test suite (9/9 passed)
+├── build-and-push-docker.ps1                      # Multi-mode Docker build/push/pull automation script
+├── docker-compose.build.yml                       # Local build with Git auth & Docker Hub push
+├── docker-compose.pull.yml                        # Zero-build pull & run from Docker Hub
+├── docker-compose.yml                             # Default local development compose mesh
 └── README.md                                      # Workspace Master Documentation
 ```
 
@@ -160,23 +174,168 @@ Both services return a unified error response template:
 
 ---
 
-## ⚡ Local Quickstart & Execution
+## ⚡ Local Quickstart & Dual Docker Execution
 
-### 1. Run Automated Unit Test Suites (15/15 Passed):
+### 1. Run Automated Unit Test Suites (24/24 Passed):
 ```powershell
-# Exchange Service tests (8 passed)
-cd "currency-exchange-service-python"; python -m pytest tests -v; cd ..
+# 1. Enterprise Core Library unit tests (9 passed)
+pytest enterprise-core-python/tests -v
 
-# Conversion Service tests (7 passed)
-cd "currency-conversion-service-python"; python -m pytest tests -v; cd ..
+# 2. Exchange Service unit tests (8 passed)
+pytest currency-exchange-service-python/tests -v
+
+# 3. Conversion Service unit tests (7 passed)
+pytest currency-conversion-service-python/tests -v
 ```
 
-### 2. Run with Docker Compose:
-```powershell
-docker compose up --build
+---
+
+### 2. Dual Docker Compose Architecture
+
+The ecosystem provides two dedicated Docker Compose configurations to accommodate both active local development and zero-build verification:
+
+```mermaid
+flowchart LR
+    subgraph BuildWorkflow ["Workflow A: Local Build & Push (docker-compose.build.yml)"]
+        SrcCode["Source Code<br/>+ Dockerfile"] -->|build-arg: GITHUB_TOKEN| BuildImg["Docker Build"]
+        BuildImg -->|Tag: ${DOCKER_USERNAME}/<svc>:latest| TagImg["Local Image Tag"]
+        TagImg -->|docker compose push| DHubPush[("🐳 Docker Hub")]
+        TagImg -->|docker compose up| DevMesh["🖥️ Docker Desktop Mesh"]
+    end
+
+    subgraph PullWorkflow ["Workflow B: Zero-Build Pull & Run (docker-compose.pull.yml)"]
+        DHubPull[("🐳 Docker Hub")] -->|docker compose pull| PullImg["Pre-built Images"]
+        PullImg -->|docker compose up| ProdMesh["🖥️ Docker Desktop Mesh"]
+    end
 ```
 
-### 3. Test Conversion API:
+#### A. Build Setup: `docker-compose.build.yml`
+- **Purpose**: Builds microservice container images locally using multi-stage Dockerfiles.
+- **Git Dependency Authentication**: Injects `GITHUB_TOKEN` / `READ_PACKAGES_TOKEN` as a build-argument so `pip` securely clones `enterprise-core-python` pinned to git tag `@v1.0.0` inside the build stage.
+- **Tagging & Registry**: Images are tagged as `${DOCKER_USERNAME:-amsidhlokhande}/currency-exchange-service-python:latest` and `${DOCKER_USERNAME:-amsidhlokhande}/currency-conversion-service-python:latest`.
+- **Push & Run**: Supports pushing to Docker Hub with `DOCKER_USERNAME` / `DOCKER_PASSWORD` and runs on Docker Desktop under the isolated `currency-mesh` bridge network.
+
+#### B. Zero-Build Remote Setup: `docker-compose.pull.yml`
+- **Purpose**: Instantly spins up the complete microservice mesh without local compilation, development dependencies, or build tools.
+- **Pure Pull**: Zero `build:` directives; exclusively pulls certified images from Docker Hub (`${DOCKER_USERNAME}/<service>:latest`).
+- **Target Audience**: QA teams, testers, and developers who need quick local verification against published Docker Hub artifacts.
+
+---
+
+### 3. Automation via `build-and-push-docker.ps1`
+
+The root orchestrator script [`build-and-push-docker.ps1`](file:///C:/Users/amsid/projects/python_projects/currency-management-python/build-and-push-docker.ps1) standardizes all Docker workflows:
+
 ```powershell
-curl -i "http://localhost:8100/currency-conversion-service-python/currency-conversion/from/USD/to/INR/quantity/100" -H "X-Correlation-ID: live-test-001"
+# Mode 1 (Default): Build locally, push to Docker Hub, and run on Docker Desktop
+.\build-and-push-docker.ps1 -Action BuildPushRun
+
+# Mode 2: Zero-Build - Pull pre-built images from Docker Hub and run
+.\build-and-push-docker.ps1 -Action PullAndRun
+
+# Mode 3: Build local images only (no push, no run)
+.\build-and-push-docker.ps1 -Action BuildOnly
+
+# Mode 4: Build local images and push to Docker Hub (ideal for CI pipelines)
+.\build-and-push-docker.ps1 -Action BuildAndPush
+
+# Mode 5: Tear down running containers and network
+.\build-and-push-docker.ps1 -Action Down
 ```
+
+#### Optional Custom Parameters:
+```powershell
+# Specify a custom Docker Hub namespace and custom tag:
+.\build-and-push-docker.ps1 -Action BuildPushRun -Registry "myorg" -Tag "v1.0.0"
+```
+
+---
+
+### 4. Direct Docker Compose CLI Commands
+
+For environments without PowerShell or developers preferring direct CLI commands:
+
+```powershell
+# Export environment variables
+$env:DOCKER_USERNAME = "amsidhlokhande"
+$env:READ_PACKAGES_TOKEN = "ghp_yourGithubToken"
+
+# --------------------------------------------------------------------
+# Workflow A: Local Build & Run
+# --------------------------------------------------------------------
+# 1. Build images from Dockerfiles
+docker compose -f docker-compose.build.yml build
+
+# 2. Push images to Docker Hub
+docker compose -f docker-compose.build.yml push
+
+# 3. Start containers in detached mode
+docker compose -f docker-compose.build.yml up -d
+
+# --------------------------------------------------------------------
+# Workflow B: Zero-Build Remote Pull & Run
+# --------------------------------------------------------------------
+# 1. Pull pre-built images from Docker Hub
+docker compose -f docker-compose.pull.yml pull
+
+# 2. Start containers without local builds
+docker compose -f docker-compose.pull.yml up -d
+
+# --------------------------------------------------------------------
+# Teardown
+# --------------------------------------------------------------------
+docker compose -f docker-compose.build.yml down
+# or
+docker compose -f docker-compose.pull.yml down
+```
+
+---
+
+### 5. Environment Variables Configuration
+
+| Environment Variable | Required For | Description |
+| :--- | :--- | :--- |
+| `DOCKER_USERNAME` | Pushing / Pulling from Docker Hub | Docker Hub account name or registry namespace (default: `amsidhlokhande`). |
+| `DOCKER_PASSWORD` | Docker Hub Authentication | Docker Hub Personal Access Token (PAT) or password for automated login. |
+| `READ_PACKAGES_TOKEN` | Local Image Building | GitHub Personal Access Token with `read:packages` / `repo` permissions to clone `enterprise-core-python`. |
+| `GITHUB_TOKEN` | Local Image Building | Alternative token variable if `READ_PACKAGES_TOKEN` is not explicitly set. |
+
+> [!TIP]
+> On Windows PowerShell, set these in your session with `$env:DOCKER_USERNAME = "your_username"`, `$env:DOCKER_PASSWORD = "your_token"`, and `$env:READ_PACKAGES_TOKEN = "your_pat"`.
+
+---
+
+### 6. Smoke Testing & Live API Verification
+
+Once containers are active on Docker Desktop, verify system health and cross-service communication:
+
+```powershell
+# 1. Exchange Service Liveness Probe
+curl -i http://localhost:8000/currency-exchange-service-python/health/liveness
+
+# 2. Exchange Service Swagger UI
+# Open in browser: http://localhost:8000/currency-exchange-service-python/swagger
+
+# 3. Direct Currency Pair Lookup
+curl -i http://localhost:8000/currency-exchange-service-python/currency-exchange/from/USD/to/INR
+
+# 4. Conversion Calculation (USD to INR for 100 units via conversion -> exchange service mesh call)
+curl -i "http://localhost:8100/currency-conversion-service-python/currency-conversion/from/USD/to/INR/quantity/100" `
+    -H "X-Correlation-ID: live-test-001"
+```
+
+#### Expected 200 OK Response:
+```json
+{
+  "id": 1001,
+  "fromCurrency": "USD",
+  "toCurrency": "INR",
+  "conversionMultiple": 86.50,
+  "quantity": 100.0,
+  "totalCalculatedAmount": 8650.00,
+  "environment": "currency-conversion-service-python:8100",
+  "exchangeServiceEnvironment": "currency-exchange-service-python:8000",
+  "correlationId": "live-test-001"
+}
+```
+

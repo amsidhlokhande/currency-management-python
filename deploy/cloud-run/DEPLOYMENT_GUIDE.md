@@ -12,11 +12,12 @@ This production deployment guide was authored by **Agent 4 (Cloud Run SRE & Clou
 1. [Context Paths](#-context-paths)
 2. [Cloud Architecture & Topology](#-cloud-architecture--topology)
 3. [Zero-Trust Service-to-Service Authentication](#-zero-trust-service-to-service-authentication)
-4. [Prerequisites & CLI Setup](#-prerequisites--cli-setup)
-5. [Automated Deployment (PowerShell / Bash)](#-automated-deployment-powershell--bash)
-6. [Declarative YAML Manifests](#-declarative-yaml-manifests)
-7. [Post-Deployment Verification & Smoke Tests](#-post-deployment-verification--smoke-tests)
-8. [Observability & Cloud Monitoring](#-observability--cloud-monitoring)
+4. [Container Build Pipelines & Local Parity (Docker Compose)](#-container-build-pipelines--local-parity-docker-compose)
+5. [Prerequisites & CLI Setup](#-prerequisites--cli-setup)
+6. [Automated Deployment (PowerShell / Bash)](#-automated-deployment-powershell--bash)
+7. [Declarative YAML Manifests](#-declarative-yaml-manifests)
+8. [Post-Deployment Verification & Smoke Tests](#-post-deployment-verification--smoke-tests)
+9. [Observability & Cloud Monitoring](#-observability--cloud-monitoring)
 
 ---
 
@@ -49,6 +50,36 @@ graph TB
 
 ---
 
+## 🐳 Container Build Pipelines & Local Parity (Docker Compose)
+
+Before deploying to Google Cloud Run, microservices are containerized and validated locally on Docker Desktop using the dual Docker Compose architecture. Both local Docker builds and Cloud Run deployments share the exact same multi-stage Dockerfiles and Git-based library distribution model:
+
+```mermaid
+flowchart LR
+    Dev["💻 Local Development"] -->|1. Test locally| DC["🐳 Docker Compose<br/>• docker-compose.build.yml<br/>• docker-compose.pull.yml"]
+    DC -->|2. Verify health & endpoints| Verify["✅ Local Smoke Pass"]
+    Verify -->|3. Push to Docker Hub| DHub[("🐳 Docker Hub / Artifact Registry")]
+    DHub -->|4. Deploy via deploy-cloud-run.ps1| CloudRun["🚀 Google Cloud Run<br/>Zero-Trust Mesh"]
+```
+
+### 1. Dual Docker Compose Configurations:
+- **`docker-compose.build.yml`**: Compiles images locally using the multi-stage Dockerfiles, securely passing `GITHUB_TOKEN` / `READ_PACKAGES_TOKEN` build-arguments so `pip` installs `enterprise-core-python` pinned to git tag `@v1.0.0`. Tags images as `${DOCKER_USERNAME}/<service>:latest` and runs them on Docker Desktop.
+- **`docker-compose.pull.yml`**: Zero-build file that exclusively pulls pre-built images from Docker Hub (`${DOCKER_USERNAME}/<service>:latest`) and runs them directly on Docker Desktop with zero local compilation overhead.
+
+### 2. Pre-Deployment Orchestration (`build-and-push-docker.ps1`):
+```powershell
+# Build locally, push to Docker Hub, and test on Docker Desktop:
+.\build-and-push-docker.ps1 -Action BuildPushRun
+
+# Or pull pre-built images for immediate validation:
+.\build-and-push-docker.ps1 -Action PullAndRun
+```
+
+> [!NOTE]
+> The same hardened, non-root (UID `10001`) container images verified via `docker-compose.build.yml` are pushed to Google Artifact Registry during Cloud Run deployment.
+
+---
+
 ## ⚡ Automated Deployment (PowerShell / Bash)
 
 ### Windows PowerShell:
@@ -56,13 +87,14 @@ graph TB
 .\deploy\cloud-run\deploy-cloud-run.ps1 `
     -ProjectId "currency-microservices-prod" `
     -Region "us-central1" `
-    -S3RateUri "s3://currency-rates-bucket/exchange_rates.csv"
+    -S3RateUri "s3://currency-rates-bucket/exchange_rates.csv" `
+    -GithubToken $env:READ_PACKAGES_TOKEN
 ```
 
 ### Linux / Google Cloud Shell (Bash):
 ```bash
 chmod +x ./deploy/cloud-run/deploy-cloud-run.sh
-./deploy/cloud-run/deploy-cloud-run.sh currency-microservices-prod us-central1 currency-repo latest s3://currency-rates-bucket/exchange_rates.csv
+./deploy/cloud-run/deploy-cloud-run.sh currency-microservices-prod us-central1 currency-repo latest s3://currency-rates-bucket/exchange_rates.csv "${GITHUB_TOKEN:-}"
 ```
 
 ---

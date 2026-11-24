@@ -12,6 +12,7 @@ REGION="${2:-us-central1}"
 ARTIFACT_REPO="${3:-currency-repo}"
 TAG="${4:-latest}"
 S3_RATE_URI="${5:-s3://currency-rates-bucket/exchange_rates.csv}"
+GITHUB_TOKEN="${6:-${READ_PACKAGES_TOKEN:-${GITHUB_TOKEN:-}}}"
 
 echo "================================================================="
 echo "  Agent 4: Google Cloud Run Deployment Pipeline Orchestrator"
@@ -67,10 +68,15 @@ echo -e "\n[Step 5/7] Building and pushing container images..."
 EXCHANGE_IMG="${REGION}-docker.pkg.dev/${PROJECT_ID}/${ARTIFACT_REPO}/currency-exchange-service-python:${TAG}"
 CONVERSION_IMG="${REGION}-docker.pkg.dev/${PROJECT_ID}/${ARTIFACT_REPO}/currency-conversion-service-python:${TAG}"
 
-docker build -t "${EXCHANGE_IMG}" ./currency-exchange-service-python
+BUILD_ARGS=()
+if [ -n "${GITHUB_TOKEN}" ]; then
+    BUILD_ARGS+=(--build-arg "GITHUB_TOKEN=${GITHUB_TOKEN}")
+fi
+
+docker build "${BUILD_ARGS[@]}" -t "${EXCHANGE_IMG}" ./currency-exchange-service-python
 docker push "${EXCHANGE_IMG}"
 
-docker build -t "${CONVERSION_IMG}" ./currency-conversion-service-python
+docker build "${BUILD_ARGS[@]}" -t "${CONVERSION_IMG}" ./currency-conversion-service-python
 docker push "${CONVERSION_IMG}"
 
 # 6. Deploy Private Exchange Service

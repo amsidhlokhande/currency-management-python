@@ -24,10 +24,14 @@
 5. [Local Development & Verification](#5-local-development--verification)
    - [Editable Install Mode](#editable-install-mode)
    - [Running Library and Microservice Tests](#running-library-and-microservice-tests)
-6. [Containerization & Docker Build Pipeline](#6-containerization--docker-build-pipeline)
-   - [Consuming Wheels Locally in Docker](#consuming-wheels-locally-in-docker)
-   - [Consuming Wheels from Private Artifactory / PyPI in Docker](#consuming-wheels-from-private-artifactory--pypi-in-docker)
-   - [Docker Compose Smoke Testing](#docker-compose-smoke-testing)
+6. [Containerization & Dual Docker Compose Architecture](#6-containerization--dual-docker-compose-architecture)
+   - [6.1 Git-Based Dependency Distribution in Docker](#61-git-based-dependency-distribution-in-docker)
+   - [6.2 Architecture of Dual Docker Compose Workflows](#62-architecture-of-dual-docker-compose-workflows)
+   - [6.3 Local Build & Push Setup (`docker-compose.build.yml`)](#63-local-build--push-setup-docker-composebuildyml)
+   - [6.4 Zero-Build Remote Setup (`docker-compose.pull.yml`)](#64-zero-build-remote-setup-docker-composepullyml)
+   - [6.5 Automation via `build-and-push-docker.ps1`](#65-automation-via-build-and-push-dockerps1)
+   - [6.6 Environment Variables & Direct Docker Compose CLI Commands](#66-environment-variables--direct-docker-compose-cli-commands)
+   - [6.7 End-to-End Verification & Smoke Testing](#67-end-to-end-verification--smoke-testing)
 7. [How to Patch a Security Vulnerability (CVE) in Seconds](#7-how-to-patch-a-security-vulnerability-cve-in-seconds)
 8. [CLI Command Reference & Cheat Sheet](#8-cli-command-reference--cheat-sheet)
 
@@ -234,23 +238,23 @@ twine upload --repository-url https://us-central1-python.pkg.dev/my-project/inte
 
 ### Step 4.4: Refactor Microservices to Consume `enterprise-core-python`
 
-Because `enterprise-core-python` transitively brings in `Flask`, `requests`, `urllib3`, `gunicorn`, `waitress`, `python-json-logger`, and `pytest`, the microservices' `requirements.txt` are reduced to a single line:
+Because `enterprise-core-python` transitively brings in `Flask`, `requests`, `urllib3`, `gunicorn`, `waitress`, `python-json-logger`, and `pytest`, the microservices' `requirements.txt` specify only the enterprise core library via Git release tag (plus any cloud-specific SDK like `boto3`):
 
 #### 1. Currency Exchange Service
 File: `currency-exchange-service-python/requirements.txt`
 ```text
-enterprise-core-python
+enterprise-core-python @ git+https://github.com/amsidhlokhande/enterprise-core-python.git@v1.0.0
 boto3
 ```
 
 #### 2. Currency Conversion Service
 File: `currency-conversion-service-python/requirements.txt`
 ```text
-enterprise-core-python
+enterprise-core-python @ git+https://github.com/amsidhlokhande/enterprise-core-python.git@v1.0.0
 ```
 
 > [!NOTE]
-> Notice how clean this is! Zero hardcoded library versions. The microservice specifies only that it needs `enterprise-core-python` (and any cloud-specific SDK like `boto3`).
+> Notice how clean this is! Zero hardcoded third-party library versions. The microservice specifies only that it needs `enterprise-core-python` pinned to an immutable git release tag (e.g. `@v1.0.0`), and any cloud-specific driver (such as `boto3`). All other transitive dependencies are resolved automatically by `pip` from the enterprise core's `setup.py` / `pyproject.toml`.
 
 ---
 
@@ -337,73 +341,357 @@ Expected result: **All test suites pass (100% Green)**.
 
 ---
 
-## 6. Containerization & Docker Build Pipeline
+## 6. Containerization & Dual Docker Compose Architecture
 
-### Consuming Wheels Locally in Docker
-In our automated build script `build-and-push-docker.ps1`, before building the container images, the script automatically compiles the `enterprise-core-python` wheel and copies it into each service's build context:
+### 6.1 Git-Based Dependency Distribution in Docker
+
+In modern enterprise architectures, microservice container builds **do not copy loose local `.whl` files** across folders. Instead, each microservice consumes `enterprise-core-python` as a versioned Git dependency directly from GitHub or an internal Git forge:
+
+```text
+enterprise-core-python @ git+https://github.com/amsidhlokhande/enterprise-core-python.git@v1.0.0
+```
+
+To support this in automated container builds while adhering to zero-trust principles:
+1. **Multi-Stage Build Isolation**: The build environment uses `ARG GITHUB_TOKEN` in the builder stage to authenticate Git operations if required, completely discarding build tokens before copying the final virtual environment (`/opt/venv`) into the hardened runtime image.
+2. **Non-Root Hardened Runtime**: The runtime image runs as an unprivileged non-root user (`appuser`, UID `10001`), protecting the host from container breakouts.
+3. **Context Path Health Probes**: Container healthchecks query the native `/health/liveness` probe mounted under each service's dedicated context path.
 
 ```dockerfile
-# Stage 1: Builder
+# Stage 1: Build & Dependencies Layer
 FROM python:3.12-slim AS builder
 WORKDIR /build
+
+ARG GITHUB_TOKEN
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git build-essential curl && rm -rf /var/lib/apt/lists/*
 
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# Copy local wheel package and install
-COPY enterprise_core_python-*.whl ./
-COPY requirements.txt ./
-RUN pip install --no-cache-dir enterprise_core_python-*.whl && \
+COPY requirements.txt .
+RUN if [ -n "$GITHUB_TOKEN" ]; then \
+        git config --global url."https://${GITHUB_TOKEN}@github.com/".insteadOf "https://github.com/"; \
+    fi && \
+    pip install --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
-# Stage 2: Hardened Runtime
+# Stage 2: Hardened Production Runtime
 FROM python:3.12-slim AS runner
 WORKDIR /app
+
+RUN groupadd -g 10001 appgroup && \
+    useradd -u 10001 -g appgroup -s /bin/sh -m appuser
+
 COPY --from=builder /opt/venv /opt/venv
-ENV PATH="/opt/venv/bin:$PATH"
-COPY . /app
+COPY --chown=appuser:appgroup . /app
+
+ENV PATH="/opt/venv/bin:$PATH" \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
+
 USER 10001
-CMD ["gunicorn", "--bind", "0.0.0.0:8000", "app:app"]
+CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "2", "--threads", "4", "app:app"]
 ```
 
-### Consuming Wheels from Private Artifactory / PyPI in Docker
-In a production CI/CD pipeline, services don't need local wheel copies. They point directly to your internal JFrog Artifactory or Nexus server using `--extra-index-url`:
+---
 
-```dockerfile
-RUN pip install --no-cache-dir \
-    --extra-index-url https://__token__:${ARTIFACTORY_TOKEN}@artifactory.company.internal/artifactory/api/pypi/pypi-local/simple \
-    -r requirements.txt
+### 6.2 Architecture of Dual Docker Compose Workflows
+
+To satisfy both developer agility (local iteration) and production-grade parity (zero-build verification), the repository provides two distinct Docker Compose configurations:
+
+```mermaid
+flowchart TD
+    subgraph LocalDev ["Workflow A: Local Build & Push (docker-compose.build.yml)"]
+        LocalSrc["📁 Local Source Code<br/>• Dockerfile (Multi-stage)<br/>• requirements.txt (@v1.0.0)"]
+        BuildEngine["🔨 Docker Build Engine<br/>• Build-arg: GITHUB_TOKEN / READ_PACKAGES_TOKEN<br/>• git clone enterprise-core-python@v1.0.0"]
+        LocalTag["🏷️ Tag Images<br/>${DOCKER_USERNAME}/currency-exchange-service-python:latest<br/>${DOCKER_USERNAME}/currency-conversion-service-python:latest"]
+        DockerHubRegistry[("🐳 Docker Hub Registry<br/>hub.docker.com/u/${DOCKER_USERNAME}")]
+        LocalSrc --> BuildEngine --> LocalTag -->|docker compose push| DockerHubRegistry
+    end
+
+    subgraph ZeroBuild ["Workflow B: Zero-Build Pull & Run (docker-compose.pull.yml)"]
+        DockerHubPrebuilt[("🐳 Docker Hub Registry<br/>Pre-built images")]
+        DockerPull["📥 Docker Engine Pull<br/>• Zero local compilation<br/>• Zero build arguments"]
+        DockerHubPrebuilt --> DockerPull
+    end
+
+    subgraph Runtime ["Docker Desktop Runtime Mesh"]
+        DesktopMesh["🌐 Network: currency-mesh<br/>• currency-exchange-service-python (Port: 8000)<br/>• currency-conversion-service-python (Port: 8100)"]
+    end
+
+    LocalTag -->|docker compose up| DesktopMesh
+    DockerPull -->|docker compose up| DesktopMesh
 ```
 
-### Docker Compose Smoke Testing
+---
 
-Build and run the entire ecosystem:
+### 6.3 Local Build & Push Setup (`docker-compose.build.yml`)
+
+The file `docker-compose.build.yml` compiles images locally from source using each microservice's multi-stage `Dockerfile`, securely forwarding `READ_PACKAGES_TOKEN` (or `GITHUB_TOKEN`) for private repository access, tagging the images with `${DOCKER_USERNAME}`, pushing them to Docker Hub, and running them on Docker Desktop:
+
+```yaml
+version: "3.8"
+
+networks:
+  currency-mesh:
+    driver: bridge
+
+services:
+  currency-exchange-service-python:
+    build:
+      context: ./currency-exchange-service-python
+      dockerfile: Dockerfile
+      args:
+        GITHUB_TOKEN: ${READ_PACKAGES_TOKEN:-${GITHUB_TOKEN:-}}
+    image: ${DOCKER_USERNAME:-amsidhlokhande}/currency-exchange-service-python:latest
+    container_name: currency-exchange-service-python
+    ports:
+      - "8000:8000"
+    environment:
+      - PORT=8000
+      - ENV=docker
+      - LOG_LEVEL=INFO
+      - CONTEXT_PATH=/currency-exchange-service-python
+      - RATES_CSV_PATH=data/exchange_rates.csv
+    networks:
+      - currency-mesh
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/currency-exchange-service-python/health/liveness')"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    restart: unless-stopped
+
+  currency-conversion-service-python:
+    build:
+      context: ./currency-conversion-service-python
+      dockerfile: Dockerfile
+      args:
+        GITHUB_TOKEN: ${READ_PACKAGES_TOKEN:-${GITHUB_TOKEN:-}}
+    image: ${DOCKER_USERNAME:-amsidhlokhande}/currency-conversion-service-python:latest
+    container_name: currency-conversion-service-python
+    ports:
+      - "8100:8100"
+    environment:
+      - PORT=8100
+      - ENV=docker
+      - LOG_LEVEL=INFO
+      - CONTEXT_PATH=/currency-conversion-service-python
+      - EXCHANGE_SERVICE_URL=http://currency-exchange-service-python:8000/currency-exchange-service-python
+    depends_on:
+      currency-exchange-service-python:
+        condition: service_healthy
+    networks:
+      - currency-mesh
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8100/currency-conversion-service-python/health/liveness')"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    restart: unless-stopped
+```
+
+> [!TIP]
+> Use `docker-compose.build.yml` when making active source code modifications, updating endpoints, or testing new dependency versions before publishing to Docker Hub.
+
+---
+
+### 6.4 Zero-Build Remote Setup (`docker-compose.pull.yml`)
+
+The file `docker-compose.pull.yml` provides a **zero-build** experience. It contains no `build:` directives and exclusively pulls certified images from Docker Hub (`${DOCKER_USERNAME}/<service>:latest`) using credentials supplied via `DOCKER_USERNAME` and `DOCKER_PASSWORD`:
+
+```yaml
+version: "3.8"
+
+networks:
+  currency-mesh:
+    driver: bridge
+
+services:
+  currency-exchange-service-python:
+    image: ${DOCKER_USERNAME:-amsidhlokhande}/currency-exchange-service-python:latest
+    container_name: currency-exchange-service-python
+    ports:
+      - "8000:8000"
+    environment:
+      - PORT=8000
+      - ENV=docker
+      - LOG_LEVEL=INFO
+      - CONTEXT_PATH=/currency-exchange-service-python
+      - RATES_CSV_PATH=data/exchange_rates.csv
+    networks:
+      - currency-mesh
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/currency-exchange-service-python/health/liveness')"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    restart: unless-stopped
+
+  currency-conversion-service-python:
+    image: ${DOCKER_USERNAME:-amsidhlokhande}/currency-conversion-service-python:latest
+    container_name: currency-conversion-service-python
+    ports:
+      - "8100:8100"
+    environment:
+      - PORT=8100
+      - ENV=docker
+      - LOG_LEVEL=INFO
+      - CONTEXT_PATH=/currency-conversion-service-python
+      - EXCHANGE_SERVICE_URL=http://currency-exchange-service-python:8000/currency-exchange-service-python
+    depends_on:
+      currency-exchange-service-python:
+        condition: service_healthy
+    networks:
+      - currency-mesh
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8100/currency-conversion-service-python/health/liveness')"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    restart: unless-stopped
+```
+
+> [!IMPORTANT]
+> `docker-compose.pull.yml` is ideal for QA teams, DevOps engineers, and CI/CD pipelines that need to spin up the entire microservices mesh instantly without requiring a Python compiler, git build tools, or access tokens.
+
+---
+
+### 6.5 Automation via `build-and-push-docker.ps1`
+
+The root orchestrator script [`build-and-push-docker.ps1`](file:///C:/Users/amsid/projects/python_projects/currency-management-python/build-and-push-docker.ps1) automates all build, push, pull, and execution steps across both Compose configurations.
+
+#### Parameter Reference:
+| Parameter | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `-Action` | String | `BuildPushRun` | Execution mode: `BuildPushRun`, `PullAndRun`, `BuildOnly`, `BuildAndPush`, `Down`. |
+| `-Registry` | String | `$env:DOCKER_USERNAME` or `amsidhlokhande` | Target Docker Hub namespace / registry. |
+| `-Tag` | String | `latest` | Tag applied to container images. |
+
+#### Supported Actions:
+1. **`BuildPushRun`** (Default):
+   - Authenticates to Docker Hub if `DOCKER_USERNAME` and `DOCKER_PASSWORD` are present.
+   - Builds container images locally using `docker-compose.build.yml` with Git auth tokens.
+   - Pushes tagged images (`${DOCKER_USERNAME}/<service>:latest`) to Docker Hub.
+   - Launches both services on Docker Desktop in detached mode (`-d`).
+   ```powershell
+   .\build-and-push-docker.ps1 -Action BuildPushRun
+   ```
+
+2. **`PullAndRun`** (Zero-Build Mode):
+   - Authenticates to Docker Hub.
+   - Pulls pre-built images directly from Docker Hub via `docker-compose.pull.yml`.
+   - Launches both services on Docker Desktop without compiling anything locally.
+   ```powershell
+   .\build-and-push-docker.ps1 -Action PullAndRun
+   ```
+
+3. **`BuildOnly`**:
+   - Compiles container images locally via `docker-compose.build.yml` without pushing to Docker Hub or starting containers.
+   ```powershell
+   .\build-and-push-docker.ps1 -Action BuildOnly
+   ```
+
+4. **`BuildAndPush`**:
+   - Builds images locally and pushes them to Docker Hub without starting local containers (ideal for automated CI runners).
+   ```powershell
+   .\build-and-push-docker.ps1 -Action BuildAndPush
+   ```
+
+5. **`Down`**:
+   - Stops and removes all running containers, networks, and volumes for both Compose setups.
+   ```powershell
+   .\build-and-push-docker.ps1 -Action Down
+   ```
+
+---
+
+### 6.6 Environment Variables & Direct Docker Compose CLI Commands
+
+#### Required & Optional Environment Variables:
+| Variable Name | Required For | Description |
+| :--- | :--- | :--- |
+| `DOCKER_USERNAME` | Pushing / Pulling from Docker Hub | Your Docker Hub account username (e.g. `amsidhlokhande`). Defaults to `amsidhlokhande`. |
+| `DOCKER_PASSWORD` | Automated Docker Login | Your Docker Hub Personal Access Token (PAT) or account password. |
+| `READ_PACKAGES_TOKEN` | Local Image Building | GitHub Personal Access Token (PAT) with `read:packages` / `repo` permissions to clone `enterprise-core-python`. |
+| `GITHUB_TOKEN` | Local Image Building | Fallback token used interchangeably with `READ_PACKAGES_TOKEN`. |
+
+#### Direct Docker Compose CLI Commands:
+For power users who prefer running `docker compose` directly without the PowerShell wrapper:
+
 ```powershell
-# Build container images
-.\build-and-push-docker.ps1 -Tag latest
+# Set environment variables in your PowerShell session
+$env:DOCKER_USERNAME = "amsidhlokhande"
+$env:READ_PACKAGES_TOKEN = "ghp_yourPersonalAccessTokenHere"
 
-# Spin up containers
-docker compose up -d
+# -------------------------------------------------------------
+# Option 1: Local Build & Run Workflow (docker-compose.build.yml)
+# -------------------------------------------------------------
+# Build images from local Dockerfiles:
+docker compose -f docker-compose.build.yml build
+
+# Push built images to Docker Hub:
+docker compose -f docker-compose.build.yml push
+
+# Launch containers on Docker Desktop:
+docker compose -f docker-compose.build.yml up -d
+
+# -------------------------------------------------------------
+# Option 2: Zero-Build Remote Pull Workflow (docker-compose.pull.yml)
+# -------------------------------------------------------------
+# Pull pre-built images from Docker Hub:
+docker compose -f docker-compose.pull.yml pull
+
+# Launch containers without local build:
+docker compose -f docker-compose.pull.yml up -d
+
+# -------------------------------------------------------------
+# Teardown
+# -------------------------------------------------------------
+docker compose -f docker-compose.build.yml down
+# or
+docker compose -f docker-compose.pull.yml down
 ```
 
-Verify the live endpoints:
+---
+
+### 6.7 End-to-End Verification & Smoke Testing
+
+Once containers are launched (via either `docker-compose.build.yml` or `docker-compose.pull.yml`), verify the live endpoints under each service's context path:
+
 ```powershell
 # 1. Exchange Service Actuator Liveness Probe (Provided by enterprise-core!)
-curl http://localhost:8000/currency-exchange-service-python/health/liveness
+curl -i http://localhost:8000/currency-exchange-service-python/health/liveness
 
 # 2. Exchange Service Actuator Metrics
-curl http://localhost:8000/currency-exchange-service-python/metrics
+curl -i http://localhost:8000/currency-exchange-service-python/metrics
 
-# 3. Exchange Rate API
-curl http://localhost:8000/currency-exchange-service-python/currency-exchange/from/USD/to/INR
+# 3. Exchange Rate Lookup API
+curl -i http://localhost:8000/currency-exchange-service-python/currency-exchange/from/USD/to/INR
 
-# 4. Conversion Service API (Calculates 10 USD -> INR)
-curl http://localhost:8100/currency-conversion-service-python/currency-conversion/from/USD/to/INR/quantity/10
+# 4. Conversion Service API (Converts 10 USD to INR via inter-service mesh call)
+curl -i http://localhost:8100/currency-conversion-service-python/currency-conversion/from/USD/to/INR/quantity/10 `
+    -H "X-Correlation-ID: smoke-test-101"
 ```
 
-Stop containers:
-```powershell
-docker compose down
+Expected Conversion Response:
+```json
+{
+  "id": 1001,
+  "fromCurrency": "USD",
+  "toCurrency": "INR",
+  "conversionMultiple": 86.50,
+  "quantity": 10.0,
+  "totalCalculatedAmount": 865.00,
+  "environment": "currency-conversion-service-python:8100",
+  "exchangeServiceEnvironment": "currency-exchange-service-python:8000",
+  "correlationId": "smoke-test-101"
+}
 ```
 
 ---
@@ -412,8 +700,8 @@ docker compose down
 
 Suppose a critical CVE is reported in `requests` or `urllib3`:
 
-1. **Bump Version in One Single File**:
-   Open `enterprise-core-python/setup.py`:
+1. **Bump Version in One Single Repository**:
+   Open `enterprise-core-python/setup.py` and `enterprise-core-python/pyproject.toml`:
    ```python
    install_requires=[
        "requests==2.32.4",  # Patched!
@@ -421,21 +709,26 @@ Suppose a critical CVE is reported in `requests` or `urllib3`:
        ...
    ]
    ```
-   Bump library version from `1.0.0` to `1.0.1`.
+   Bump package version from `1.0.0` to `1.0.1`.
 
-2. **Publish New Wheel**:
-   ```powershell
-   python -m build
-   twine upload --repository-url https://artifactory.internal/... dist/*
+2. **Publish Automated Git Release**:
+   Commit and tag the release:
+   ```bash
+   git tag v1.0.1
+   git push origin v1.0.1
    ```
+   The GitHub Actions workflow [`.github/workflows/enterprise-core-release.yml`](.github/workflows/enterprise-core-release.yml) automatically runs tests, builds the distribution artifacts, and publishes the GitHub Release.
 
-3. **Redeploy All 36+ Microservices**:
-   Because the microservices declare:
+3. **Propagate to Microservices**:
+   In each microservice `requirements.txt`:
    ```text
-   enterprise-core-python>=1.0.0
+   enterprise-core-python @ git+https://github.com/amsidhlokhande/enterprise-core-python.git@v1.0.1
    ```
-   During the next container build, pip automatically downloads the new `1.0.1` wheel.
-   **Zero microservice repositories are touched.** Both the core library update and the vulnerability patch propagate across the entire fleet simultaneously!
+   Execute the automated build pipeline:
+   ```powershell
+   .\build-and-push-docker.ps1 -Action BuildPushRun
+   ```
+   The patched images are built, tagged, pushed to Docker Hub, and deployed across Docker Desktop and Kubernetes clusters seamlessly!
 
 ---
 
@@ -443,13 +736,17 @@ Suppose a critical CVE is reported in `requests` or `urllib3`:
 
 | Task | Command |
 | :--- | :--- |
-| **Build Enterprise Core Wheel** | `cd enterprise-core-python; python -m build; cd ..` |
-| **Install in Editable Mode** | `pip install -e ./enterprise-core-python` |
-| **Run Enterprise Core Tests** | `pytest enterprise-core-python/tests -v` |
-| **Run Microservice Tests** | `pytest currency-exchange-service-python/tests -v` |
-| **Publish Wheel to Artifactory** | `twine upload --repository-url <URL> enterprise-core-python/dist/*` |
-| **Build Container Images** | `.\build-and-push-docker.ps1 -Tag latest` |
-| **Start Containers** | `docker compose up -d` |
+| **Run Enterprise Core Unit Tests** | `pytest enterprise-core-python/tests -v` |
+| **Run Exchange Service Unit Tests** | `pytest currency-exchange-service-python/tests -v` |
+| **Run Conversion Service Unit Tests**| `pytest currency-conversion-service-python/tests -v` |
+| **Local Editable Install** | `pip install -e ./enterprise-core-python` |
+| **Build & Push & Run (All-in-One)** | `.\build-and-push-docker.ps1 -Action BuildPushRun` |
+| **Zero-Build Pull & Run from Docker Hub** | `.\build-and-push-docker.ps1 -Action PullAndRun` |
+| **Build Local Images Only** | `.\build-and-push-docker.ps1 -Action BuildOnly` |
+| **Build and Push to Registry Only** | `.\build-and-push-docker.ps1 -Action BuildAndPush` |
+| **Tear Down Docker Compose Mesh** | `.\build-and-push-docker.ps1 -Action Down` |
+| **Direct Compose: Build & Start** | `docker compose -f docker-compose.build.yml up -d --build` |
+| **Direct Compose: Zero-Build Start** | `docker compose -f docker-compose.pull.yml pull && docker compose -f docker-compose.pull.yml up -d` |
 | **Test Live Health Actuator** | `curl http://localhost:8000/currency-exchange-service-python/health/liveness` |
 | **Test Live Swagger UI** | Open browser to `http://localhost:8000/currency-exchange-service-python/swagger` |
-| **Stop Containers** | `docker compose down` |
+

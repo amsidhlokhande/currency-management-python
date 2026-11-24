@@ -141,5 +141,5 @@ To eliminate code duplication across 36+ microservices and establish uniform gov
 2. **Standard Microservice Consumption**:
    Microservices declare `enterprise-core-python>=1.0.0` in `requirements.txt` and instantiate common components in 1-2 lines of configuration.
 3. **Distribution Lifecycle**:
-   - Monorepo/Local: Built into wheel (`.whl`) and installed via `--find-links .`
-   - Enterprise Production: Published to JFrog Artifactory / Sonatype Nexus / Google Cloud Artifact Registry.
+   - Monorepo/Git: Installed directly via Git tag: `enterprise-core-python @ git+https://github.com/amsidhlokhande/enterprise-core-python.git@v1.0.0`
+   - Enterprise Production: Published to GitHub Releases, JFrog Artifactory, Sonatype Nexus, or Google Cloud Artifact Registry.

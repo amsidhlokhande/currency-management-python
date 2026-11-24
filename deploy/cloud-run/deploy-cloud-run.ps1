@@ -9,7 +9,8 @@ param (
     [string]$Region = "us-central1",
     [string]$ArtifactRepo = "currency-repo",
     [string]$Tag = "latest",
-    [string]$S3RateUri = "s3://currency-rates-bucket/exchange_rates.csv"
+    [string]$S3RateUri = "s3://currency-rates-bucket/exchange_rates.csv",
+    [string]$GithubToken = $(if ($env:READ_PACKAGES_TOKEN) { $env:READ_PACKAGES_TOKEN } elseif ($env:GITHUB_TOKEN) { $env:GITHUB_TOKEN } else { "" })
 )
 
 $ErrorActionPreference = "Stop"
@@ -77,13 +78,22 @@ Write-Host "`n[Step 5/7] Building and pushing Docker images to Artifact Registry
 $exchangeImage = "$Region-docker.pkg.dev/$ProjectId/$ArtifactRepo/currency-exchange-service-python:$Tag"
 $conversionImage = "$Region-docker.pkg.dev/$ProjectId/$ArtifactRepo/currency-conversion-service-python:$Tag"
 
+$dockerBuildArgs = @()
+if ($GithubToken) {
+    $dockerBuildArgs += @("--build-arg", "GITHUB_TOKEN=$GithubToken")
+}
+
 # Build & push Exchange
-docker build -t $exchangeImage ./currency-exchange-service-python
+docker build @dockerBuildArgs -t $exchangeImage ./currency-exchange-service-python
+if ($LASTEXITCODE -ne 0) { throw "Exchange service docker build failed!" }
 docker push $exchangeImage
+if ($LASTEXITCODE -ne 0) { throw "Exchange service docker push failed!" }
 
 # Build & push Conversion
-docker build -t $conversionImage ./currency-conversion-service-python
+docker build @dockerBuildArgs -t $conversionImage ./currency-conversion-service-python
+if ($LASTEXITCODE -ne 0) { throw "Conversion service docker build failed!" }
 docker push $conversionImage
+if ($LASTEXITCODE -ne 0) { throw "Conversion service docker push failed!" }
 
 # 6. Deploy Private Currency Exchange Service
 Write-Host "`n[Step 6/7] Deploying private currency-exchange-service-python (internal ingress)..." -ForegroundColor Green
