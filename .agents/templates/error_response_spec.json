@@ -1,0 +1,47 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CentralizedErrorResponse",
+  "type": "object",
+  "required": [
+    "timestamp",
+    "status",
+    "errorCode",
+    "message",
+    "path",
+    "correlationId"
+  ],
+  "properties": {
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 UTC timestamp of when error occurred"
+    },
+    "status": {
+      "type": "integer",
+      "description": "HTTP status code (e.g. 400, 404, 500, 503)"
+    },
+    "errorCode": {
+      "type": "string",
+      "description": "Standardized application-specific error code"
+    },
+    "message": {
+      "type": "string",
+      "description": "Human-readable high-level error summary"
+    },
+    "path": {
+      "type": "string",
+      "description": "Request URI where the failure originated"
+    },
+    "correlationId": {
+      "type": "string",
+      "description": "Correlation tracking UUID propagated across services"
+    },
+    "details": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Detailed error validation or diagnostic messages"
+    }
+  }
+}

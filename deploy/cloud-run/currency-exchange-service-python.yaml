@@ -1,0 +1,54 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: currency-exchange-service-python
+  namespace: "currency-microservices-prod"
+  annotations:
+    run.googleapis.com/ingress: internal
+    run.googleapis.com/launch-stage: GA
+    run.googleapis.com/description: "Internal Exchange Rate Authority with Context Path"
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/minScale: "1"
+        autoscaling.knative.dev/maxScale: "10"
+        run.googleapis.com/execution-environment: gen2
+        run.googleapis.com/cpu-throttling: "false"
+    spec:
+      serviceAccountName: sa-currency-exchange@currency-microservices-prod.iam.gserviceaccount.com
+      containerConcurrency: 80
+      timeoutSeconds: 300
+      containers:
+      - image: us-central1-docker.pkg.dev/currency-microservices-prod/currency-repo/currency-exchange-service-python:latest
+        ports:
+        - name: http1
+          containerPort: 8000
+        resources:
+          limits:
+            cpu: 1000m
+            memory: 512Mi
+        livenessProbe:
+          httpGet:
+            path: /currency-exchange-service-python/health/liveness
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 15
+        startupProbe:
+          httpGet:
+            path: /currency-exchange-service-python/health/readiness
+            port: 8000
+          initialDelaySeconds: 2
+          periodSeconds: 5
+          failureThreshold: 10
+        env:
+        - name: PORT
+          value: "8000"
+        - name: ENV
+          value: "production"
+        - name: LOG_LEVEL
+          value: "INFO"
+        - name: CONTEXT_PATH
+          value: "/currency-exchange-service-python"
+        - name: RATES_CSV_PATH
+          value: "s3://currency-rates-bucket/exchange_rates.csv"

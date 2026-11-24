@@ -1,0 +1,53 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AgentSyncEvent",
+  "type": "object",
+  "required": [
+    "eventId",
+    "timestamp",
+    "sourceAgent",
+    "eventType",
+    "affectedServices",
+    "payload"
+  ],
+  "properties": {
+    "eventId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "sourceAgent": {
+      "type": "string",
+      "enum": ["Agent 1", "Agent 2", "Agent 3", "Agent 4", "Agent 5"]
+    },
+    "eventType": {
+      "type": "string",
+      "enum": [
+        "REQUIREMENT_UPDATED",
+        "CODE_MODIFIED",
+        "CONTRACT_CHANGED",
+        "DOCKERFILE_UPDATED",
+        "DEPLOYMENT_CONFIG_CHANGED",
+        "SYNC_REQUEST",
+        "SYNC_ACK"
+      ]
+    },
+    "affectedServices": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "currency-conversion-service-python",
+          "currency-exchange-service-python",
+          "global"
+        ]
+      }
+    },
+    "payload": {
+      "type": "object"
+    }
+  }
+}
