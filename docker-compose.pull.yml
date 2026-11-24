@@ -1,0 +1,52 @@
+
+networks:
+  currency-mesh:
+    driver: bridge
+
+services:
+  currency-exchange-service-python:
+    image: ${DOCKER_USERNAME:-amsidhlokhande}/currency-exchange-service-python:latest
+    pull_policy: always
+    container_name: currency-exchange-service-python
+    ports:
+      - "8000:8000"
+    environment:
+      - PORT=8000
+      - ENV=docker
+      - LOG_LEVEL=INFO
+      - CONTEXT_PATH=/currency-exchange-service-python
+      - RATES_CSV_PATH=data/exchange_rates.csv
+    networks:
+      - currency-mesh
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/currency-exchange-service-python/health/liveness')"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    restart: unless-stopped
+
+  currency-conversion-service-python:
+    image: ${DOCKER_USERNAME:-amsidhlokhande}/currency-conversion-service-python:latest
+    pull_policy: always
+    container_name: currency-conversion-service-python
+    ports:
+      - "8100:8100"
+    environment:
+      - PORT=8100
+      - ENV=docker
+      - LOG_LEVEL=INFO
+      - CONTEXT_PATH=/currency-conversion-service-python
+      - EXCHANGE_SERVICE_URL=http://currency-exchange-service-python:8000/currency-exchange-service-python
+    depends_on:
+      currency-exchange-service-python:
+        condition: service_healthy
+    networks:
+      - currency-mesh
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8100/currency-conversion-service-python/health/liveness')"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    restart: unless-stopped

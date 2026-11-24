@@ -102,10 +102,11 @@ Identical multi-stage architecture exposed on `PORT=8100`, configured with `EXCH
 
 ## 4. Docker Compose Orchestration Specification
 
-Root `docker-compose.yml`:
-```yaml
-version: "3.8"
+The system maintains two dedicated Docker Compose specifications:
 
+### 4.1 Local Build & Push Specification (`docker-compose.build.yml` / `docker-compose.yml`)
+Builds multi-stage Dockerfiles passing `GITHUB_TOKEN` build arguments, tags with `${DOCKER_USERNAME}`, and supports pushing to Docker Hub:
+```yaml
 networks:
   currency-mesh:
     driver: bridge
@@ -115,45 +116,111 @@ services:
     build:
       context: ./currency-exchange-service-python
       dockerfile: Dockerfile
-    image: currency-exchange-service-python:latest
+      args:
+        GITHUB_TOKEN: ${READ_PACKAGES_TOKEN:-${GITHUB_TOKEN:-}}
+    image: ${DOCKER_USERNAME:-amsidhlokhande}/currency-exchange-service-python:latest
     container_name: currency-exchange-service-python
     ports:
       - "8000:8000"
     environment:
       - PORT=8000
-      - RATES_CSV_PATH=data/exchange_rates.csv
+      - ENV=docker
       - LOG_LEVEL=INFO
+      - CONTEXT_PATH=/currency-exchange-service-python
+      - RATES_CSV_PATH=data/exchange_rates.csv
     networks:
       - currency-mesh
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/liveness')"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/currency-exchange-service-python/health/liveness')"]
       interval: 15s
       timeout: 3s
       retries: 3
+      start_period: 5s
     restart: unless-stopped
 
   currency-conversion-service-python:
     build:
       context: ./currency-conversion-service-python
       dockerfile: Dockerfile
-    image: currency-conversion-service-python:latest
+      args:
+        GITHUB_TOKEN: ${READ_PACKAGES_TOKEN:-${GITHUB_TOKEN:-}}
+    image: ${DOCKER_USERNAME:-amsidhlokhande}/currency-conversion-service-python:latest
     container_name: currency-conversion-service-python
     ports:
       - "8100:8100"
     environment:
       - PORT=8100
-      - EXCHANGE_SERVICE_URL=http://currency-exchange-service-python:8000
+      - ENV=docker
       - LOG_LEVEL=INFO
+      - CONTEXT_PATH=/currency-conversion-service-python
+      - EXCHANGE_SERVICE_URL=http://currency-exchange-service-python:8000/currency-exchange-service-python
     depends_on:
       currency-exchange-service-python:
         condition: service_healthy
     networks:
       - currency-mesh
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8100/health/liveness')"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8100/currency-conversion-service-python/health/liveness')"]
       interval: 15s
       timeout: 3s
       retries: 3
+      start_period: 5s
+    restart: unless-stopped
+```
+
+### 4.2 Zero-Build Remote Specification (`docker-compose.pull.yml`)
+Exclusively pulls pre-built images from Docker Hub (`${DOCKER_USERNAME}/<service>:latest`) with `pull_policy: always` and runs on Docker Desktop with zero local compilation:
+```yaml
+networks:
+  currency-mesh:
+    driver: bridge
+
+services:
+  currency-exchange-service-python:
+    image: ${DOCKER_USERNAME:-amsidhlokhande}/currency-exchange-service-python:latest
+    pull_policy: always
+    container_name: currency-exchange-service-python
+    ports:
+      - "8000:8000"
+    environment:
+      - PORT=8000
+      - ENV=docker
+      - LOG_LEVEL=INFO
+      - CONTEXT_PATH=/currency-exchange-service-python
+      - RATES_CSV_PATH=data/exchange_rates.csv
+    networks:
+      - currency-mesh
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/currency-exchange-service-python/health/liveness')"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    restart: unless-stopped
+
+  currency-conversion-service-python:
+    image: ${DOCKER_USERNAME:-amsidhlokhande}/currency-conversion-service-python:latest
+    pull_policy: always
+    container_name: currency-conversion-service-python
+    ports:
+      - "8100:8100"
+    environment:
+      - PORT=8100
+      - ENV=docker
+      - LOG_LEVEL=INFO
+      - CONTEXT_PATH=/currency-conversion-service-python
+      - EXCHANGE_SERVICE_URL=http://currency-exchange-service-python:8000/currency-exchange-service-python
+    depends_on:
+      currency-exchange-service-python:
+        condition: service_healthy
+    networks:
+      - currency-mesh
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8100/currency-conversion-service-python/health/liveness')"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
     restart: unless-stopped
 ```
 

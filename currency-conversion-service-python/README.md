@@ -1,231 +1,444 @@
-# 💱 Currency Conversion Service (Python / Flask)
+# Currency Conversion Service (`currency-conversion-service-python`)
 
-[![Python 3.15.2](https://img.shields.io/badge/Python-3.15.2-3776AB.svg?logo=python&logoColor=white)](https://www.python.org/)
-[![Flask 3.1](https://img.shields.io/badge/Flask-3.1-000000.svg?logo=flask&logoColor=white)](https://flask.palletsprojects.com/)
-[![Context Path](https://img.shields.io/badge/Context%20Path-%2Fcurrency--conversion--service--python-green.svg)](#-context-path--api-endpoints-catalog)
-[![Docker](https://img.shields.io/badge/Docker-Multi--Stage-2496ED.svg?logo=docker&logoColor=white)](https://www.docker.com/)
-[![Google Cloud Run](https://img.shields.io/badge/Google%20Cloud-Run-4285F4.svg?logo=googlecloud&logoColor=white)](https://cloud.google.com/run)
-[![Swagger](https://img.shields.io/badge/Swagger-OpenAPI%203.0-85EA2D.svg?logo=swagger&logoColor=black)](#-swagger--openapi-documentation)
+[![Python Version](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12-blue.svg)](https://www.python.org/)
+[![Flask Version](https://img.shields.io/badge/Flask-3.1.0-green.svg)](https://palletsprojects.com/p/flask/)
+[![Docker](https://img.shields.io/badge/docker-ready-blue.svg)](https://www.docker.com/)
+[![CI/CD](https://img.shields.io/badge/GitHub_Actions-Docker_Build_%26_Push-orange.svg)](.github/workflows/docker-build.yml)
 
-An enterprise-grade financial calculation microservice that orchestrates currency conversion calculations. Built with **Python 3.15.2** and **Flask**, engineered by the autonomous multi-agent framework following a standardized **e2e layered architecture**.
+Production-ready Currency Conversion Microservice built with Python and Flask. It leverages the shared **`enterprise-core-python`** enterprise library for standardized cross-cutting concerns (centralized exception handling, structured JSON logging with PII masking, latency interceptors, Spring Boot-style actuators, and Swagger UI). It integrates with `currency-exchange-service-python` downstream using a resilient HTTP client featuring retries with exponential backoff, circuit breaking, timeouts, and correlation ID propagation.
 
 ---
 
-## 📑 Index
-1. [Architecture Overview](#-architecture-overview)
-2. [Project Layering & Directory Structure](#-project-layering--directory-structure)
-3. [Context Path & API Endpoints Catalog](#-context-path--api-endpoints-catalog)
-4. [High-Level Design (HLD)](#-high-level-design-hld)
-5. [Low-Level Design (LLD) Sequence Diagram](#-low-level-design-lld-sequence-diagram)
-6. [Resiliency & Fault Tolerance Patterns](#-resiliency--fault-tolerance-patterns)
-7. [Centralized Exception Handling & CCSP Error Taxonomy](#-centralized-exception-handling--ccsp-error-taxonomy)
-8. [JSON Structured Logging & PII Masking](#-json-structured-logging--pii-masking)
-9. [Latency & Tracing Interceptors](#-latency--tracing-interceptors)
-10. [Health & Actuator Probes](#-health--actuator-probes)
-11. [Swagger & OpenAPI Documentation](#-swagger--openapi-documentation)
-12. [Local Windows Setup & Quickstart](#-local-windows-setup--quickstart)
-13. [Environment Configuration Reference (.env)](#-environment-configuration-reference-env)
+## Table of Contents
+
+- [Architecture & Key Features](#architecture--key-features)
+- [Prerequisites](#prerequisites)
+- [Project Structure](#project-structure)
+- [Local Development Setup](#local-development-setup)
+  - [1. Clone Repository & Setup Virtual Environment](#1-clone-repository--setup-virtual-environment)
+  - [2. Install Dependencies with `enterprise-core-python` v1.0.0](#2-install-dependencies-with-enterprise-core-python-v100)
+  - [3. Environment Configuration](#3-environment-configuration)
+  - [4. Run Application Locally](#4-run-application-locally)
+  - [5. Run Unit & Integration Tests](#5-run-unit--integration-tests)
+- [Docker Build & Push (Local)](#docker-build--push-local)
+  - [1. Building Docker Image with Tag v1.0.0](#1-building-docker-image-with-tag-v100)
+  - [2. Running the Docker Container](#2-running-the-docker-container)
+  - [3. Pushing Docker Image to Docker Hub](#3-pushing-docker-image-to-docker-hub)
+- [GitHub Actions CI/CD Workflow Setup](#github-actions-cicd-workflow-setup)
+  - [1. Configure GitHub Secrets](#1-configure-github-secrets)
+  - [2. Workflow Pipeline Details](#2-workflow-pipeline-details)
+  - [3. Trigger Build & Push](#3-trigger-build--push)
+- [API Endpoints Reference](#api-endpoints-reference)
+- [Troubleshooting & FAQ](#troubleshooting--faq)
 
 ---
 
-## 🏛️ Architecture Overview
+## Architecture & Key Features
 
-The `currency-conversion-service-python` accepts currency conversion orders (`fromCurrency`, `toCurrency`, `quantity`), delegating rate queries to `currency-exchange-service-python` under its context path.
-- **Base Context Path**: All service endpoints, actuators, and Swagger documentation are mounted strictly under `/currency-conversion-service-python`.
-- **Inter-Service Communication**: Queries `http://localhost:8000/currency-exchange-service-python/currency-exchange/from/{from}/to/{to}`.
-- **Resilient Client**: Protected by 3x exponential backoff retries, timeouts, circuit breaker pattern, and Google IAM OIDC token support.
+- **Base Context Path**: All business endpoints, actuators, and docs are mounted strictly under `/currency-conversion-service-python`.
+- **Enterprise Core Integration (`v1.0.0`)**: Centralizes dependencies (Flask, Gunicorn, Waitress, Requests, Pytest) and enterprise utilities.
+- **Resilient Downstream Exchange Client**: Communicates with downstream `currency-exchange-service-python` with retries, exponential backoff, circuit breaker, timeout configuration, and correlation ID propagation.
+- **Resilient Multi-Stage Dockerfile**: Slim, hardened non-root container (`appuser:10001`) with multi-stage build caching.
+- **Automated CI/CD**: Seamless GitHub Actions workflow to build, tag, and publish Docker images.
 
 ---
 
-## 📂 Project Layering & Directory Structure
+## Prerequisites
+
+- **Python**: `3.10` or higher (`3.12` recommended)
+- **Docker**: Docker Desktop or Docker Engine `20.10+` with Buildx
+- **Git**: Git installed and configured locally
+- **Docker Hub Account**: Required for pushing Docker images
+- **GitHub Personal Access Token (PAT)** *(Only required if `enterprise-core-python` is private)*: Token with `repo:read` scope.
+
+---
+
+## Project Structure
 
 ```text
 currency-conversion-service-python/
-├── .env                              # Environment configs & CCSP error messages
-├── app.py                            # Flask application factory & WSGI runner
-├── constants.py                      # Centralized constants driven by .env
-├── requirements.txt                  # Python dependencies
-├── Dockerfile                        # Multi-stage production container
-├── README.md                         # Publication-grade documentation
+├── .github/
+│   └── workflows/
+│       └── docker-build.yml          # GitHub Actions CI/CD build & push pipeline
+├── e2e/
+│   ├── exception/                    # Error definitions & handlers (CCSP taxonomy)
+│   ├── modules/                      # Conversion result domain model and validation
+│   ├── route/                        # Flask blueprints (conversion, actuator, swagger)
+│   ├── service/                      # Business logic and resilient exchange client
+│   └── utils/                        # Interceptors and structured logging
 ├── tests/
-│   ├── __init__.py
-│   └── test_conversion_service.py    # Automated pytest suite (7/7 passing)
-└── e2e/                              # End-to-End Enterprise Architecture
-    ├── __init__.py
-    ├── config/                       # Settings & environment integration
-    │   ├── __init__.py
-    │   └── settings.py
-    ├── modules/                      # Domain models & DTOs
-    │   ├── __init__.py
-    │   └── conversion_result.py
-    ├── service/                      # Business logic & resilient HTTP client
-    │   ├── __init__.py
-    │   ├── conversion_service.py
-    │   └── exchange_client.py
-    ├── exception/                    # Custom exceptions & centralized error handler
-    │   ├── __init__.py
-    │   ├── custom_exceptions.py
-    │   └── error_handler.py
-    ├── utils/                        # Structured JSON logger & interceptors
-    │   ├── __init__.py
-    │   ├── logging.py
-    │   └── interceptors.py
-    └── route/                        # Flask routes mounted under context path
-        ├── __init__.py
-        ├── conversion_routes.py
-        ├── actuator_routes.py
-        └── swagger_routes.py
+│   └── test_conversion_service.py    # Unit & API test suite
+├── app.py                            # Application bootstrap and factory
+├── constants.py                      # Environment and application constants
+├── Dockerfile                        # Multi-stage hardened production Dockerfile
+├── requirements.txt                  # Dependencies with enterprise-core-python tag v1.0.0
+└── README.md                         # Project documentation
 ```
 
 ---
 
-## 📡 Context Path & API Endpoints Catalog
+## Local Development Setup
 
-**Base Context Path**: `/currency-conversion-service-python`
+### 1. Clone Repository & Setup Virtual Environment
 
-| Method | Full Endpoint URI | Description | Status Codes |
-| :--- | :--- | :--- | :--- |
-| `GET` | `/currency-conversion-service-python/currency-conversion/from/{from}/to/{to}/quantity/{qty}` | Calculate currency conversion | `200 OK`, `400 Bad Request`, `404 Not Found`, `503 Unavailable` |
-| `GET` | `/currency-conversion-service-python/health` | Comprehensive Actuator health status | `200 OK` |
-| `GET` | `/currency-conversion-service-python/health/liveness` | Container liveness probe | `200 OK` |
-| `GET` | `/currency-conversion-service-python/health/readiness` | Container readiness probe | `200 OK` |
-| `GET` | `/currency-conversion-service-python/info` | Service metadata, runtime & uptime | `200 OK` |
-| `GET` | `/currency-conversion-service-python/metrics` | Operational metrics | `200 OK` |
-| `GET` | `/currency-conversion-service-python/swagger` | Interactive Swagger UI Web Documentation | `200 OK (HTML)` |
-| `GET` | `/currency-conversion-service-python/openapi.json` | Declarative OpenAPI 3.0.3 specification | `200 OK (JSON)` |
+```bash
+# Clone repository
+git clone https://github.com/amsidhlokhande/currency-conversion-service-python.git
+cd currency-conversion-service-python
 
-#### Sample Success Response (`GET .../currency-conversion/from/USD/to/INR/quantity/100`):
-```json
-{
-  "id": 1001,
-  "fromCurrency": "USD",
-  "toCurrency": "INR",
-  "conversionMultiple": 86.50,
-  "quantity": 100.0,
-  "totalCalculatedAmount": 8650.00,
-  "environment": "currency-conversion-service-python:8100",
-  "exchangeServiceEnvironment": "currency-exchange-service-python:8000",
-  "correlationId": "c4b18c6e-7ef1-4b71-9231-10c0e5a967c1",
-  "timestamp": "2026-11-24T02:00:00.123456+00:00"
-}
+# Create virtual environment
+python -m venv venv
+
+# Activate virtual environment
+# Windows (PowerShell):
+.\venv\Scripts\Activate.ps1
+# Windows (cmd):
+.\venv\Scripts\activate.bat
+# Linux / macOS:
+source venv/bin/activate
 ```
 
----
+### 2. Install Dependencies with `enterprise-core-python` v1.0.0
 
-## 📐 High-Level Design (HLD)
+The `requirements.txt` file references the exact tag `v1.0.0`:
 
-```mermaid
-graph TD
-    Client(["🌐 Client / Front-End API"]) -->|GET /currency-conversion-service-python/currency-conversion/...<br/>Header: X-Correlation-ID| Interceptor["🛡️ Request/Response Interceptor<br/>• Latency timing (ms)<br/>• Correlation ID binding"]
-
-    subgraph ConversionService ["currency-conversion-service-python :8100"]
-        Interceptor --> Route["🎮 Conversion Route (/currency-conversion-service-python)"]
-        Route --> Service["🧮 Conversion Service (Calculation Engine)"]
-        Service --> ResilientClient["🔄 Resilient HTTP Client<br/>• 3x Retries with Backoff<br/>• Connect/Read Timeouts<br/>• Circuit Breaker<br/>• Google OIDC Token"]
-        Route --> ErrorHandler["🚨 Centralized Error Handler (@app.errorhandler)"]
-    end
-
-    ResilientClient -->|HTTP GET /currency-exchange-service-python/currency-exchange/...<br/>Header: X-Correlation-ID: xyz| ExchangeSvc["📊 currency-exchange-service-python :8000"]
-    ExchangeSvc -->|200 OK: conversionMultiple=86.50| ResilientClient
-
-    ResilientClient --> Service
-    Service --> Route
-    Route --> Interceptor
-    Interceptor -->|HTTP 200 OK + Conversion JSON<br/>X-Response-Time-Ms| Client
+```txt
+enterprise-core-python @ git+https://github.com/amsidhlokhande/enterprise-core-python.git@v1.0.0
 ```
 
----
-
-## 🔄 Low-Level Design (LLD) Sequence Diagram
-
-```mermaid
-sequenceDiagram
-    autonumber
-    participant Client as 🌐 Client
-    participant Interceptor as 🛡️ Interceptor Filter
-    participant Route as 🎮 Conversion Route
-    participant Service as 🧮 Conversion Service
-    participant ResilientClient as 🔄 Resilient Client
-    participant ExchangeSvc as 📊 Exchange Service (:8000)
-
-    Client->>Interceptor: GET /currency-conversion-service-python/currency-conversion/from/USD/to/INR/quantity/100
-    Note over Interceptor: Bind X-Correlation-ID, record start_time
-    Interceptor->>Route: Route within context path /currency-conversion-service-python
-    Route->>Service: calculate_conversion(USD, INR, 100)
-    Service->>Service: Validate parameters (USD, INR, 100)
-    Service->>ResilientClient: get_exchange_rate("USD", "INR")
-    
-    rect rgb(240, 248, 255)
-        Note over ResilientClient: Circuit Breaker Check: CLOSED
-        ResilientClient->>ExchangeSvc: GET /currency-exchange-service-python/currency-exchange/from/USD/to/INR
-        ExchangeSvc-->>ResilientClient: 200 OK {"conversionMultiple": 86.50, ...}
-        Note over ResilientClient: Record success, reset failure count
-    end
-
-    Service->>Service: Compute total = 100 * 86.50 = 8650.00
-    Service-->>Route: ConversionResult entity
-    Route-->>Interceptor: HTTP 200 OK (JSON)
-    Note over Interceptor: Compute duration_ms, emit JSON audit log
-    Interceptor-->>Client: Final Response + Headers (X-Response-Time-Ms, X-Correlation-ID)
+#### If `enterprise-core-python` is Public:
+```bash
+pip install --upgrade pip
+pip install -r requirements.txt
 ```
 
----
+#### If `enterprise-core-python` is Private:
+Set your GitHub Personal Access Token (`GITHUB_TOKEN`):
 
-## 🚨 Centralized Exception Handling & CCSP Error Taxonomy
-
-All exceptions are intercepted by a single point of error handling (`@app.errorhandler(Exception)`) in `e2e/exception/error_handler.py`.
-- **`errorCode`**: Standardized with service prefix `CCSP_xxx`.
-- **`errorMessage`**: Functional, user-friendly summary related to the business condition.
-- **`errorDetailMessage`**: Detailed technical reason for debugging.
-- **Driven by `.env`**: Mapped into constants in `constants.py`.
-
-| Error Code | Functional Message | HTTP Status | Technical Condition |
-| :--- | :--- | :--- | :--- |
-| `CCSP_001` | Exchange rate not available for the requested currency pair. | `404 Not Found` | Downstream exchange service returned 404 |
-| `CCSP_002` | Conversion quantity must be a positive numeric value greater than zero. | `400 Bad Request` | Quantity validation failed |
-| `CCSP_003` | Currency code must be a valid 3-letter ISO 4217 alphabetic code. | `400 Bad Request` | Currency code regex validation failed |
-| `CCSP_004` | The downstream Currency Exchange Service is currently unavailable. | `503 Unavailable` | Connection timeout or circuit breaker OPEN |
-| `CCSP_500` | An internal processing error occurred in Currency Conversion Service. | `500 Server Error` | Unhandled runtime exception catch-all |
-
-#### Unified Error Response Sample (`503 Service Unavailable`):
-```json
-{
-  "timestamp": "2026-11-24T02:15:30.123456+00:00",
-  "status": 503,
-  "errorCode": "CCSP_004",
-  "errorMessage": "The downstream Currency Exchange Service is currently unavailable.",
-  "errorDetailMessage": "Failed to communicate with 'currency-exchange-service-python': Connection timed out",
-  "path": "/currency-conversion-service-python/currency-conversion/from/USD/to/INR/quantity/100",
-  "correlationId": "c4b18c6e-7ef1-4b71-9231-10c0e5a967c1",
-  "details": [
-    "Downstream dependency is either down, timed out, or circuit breaker is OPEN. Please retry shortly."
-  ]
-}
-```
-
----
-
-## 📖 Swagger & OpenAPI Documentation
-
-- **Interactive UI**: Open `http://localhost:8100/currency-conversion-service-python/swagger`
-- **Declarative Spec**: Access `http://localhost:8100/currency-conversion-service-python/openapi.json`
-
----
-
-## 💻 Local Windows Setup & Quickstart
-
+**PowerShell:**
 ```powershell
-# 1. Navigate to service directory
-cd "currency-conversion-service-python"
+$env:GITHUB_TOKEN="your_personal_access_token_here"
+pip install --upgrade pip
+pip install "enterprise-core-python @ git+https://${env:GITHUB_TOKEN}@github.com/amsidhlokhande/enterprise-core-python.git@v1.0.0"
+pip install -r requirements.txt
+```
 
-# 2. Run automated tests (7/7 passing)
-python -m pytest tests -v
+**Bash / Linux / macOS:**
+```bash
+export GITHUB_TOKEN="your_personal_access_token_here"
+pip install --upgrade pip
+pip install "enterprise-core-python @ git+https://${GITHUB_TOKEN}@github.com/amsidhlokhande/enterprise-core-python.git@v1.0.0"
+pip install -r requirements.txt
+```
 
-# 3. Launch service on Port 8100
+### 3. Environment Configuration
+
+Create a `.env` file in the project root to override default constants if needed:
+
+```properties
+SERVICE_NAME=currency-conversion-service-python
+PORT=8100
+ENV=development
+LOG_LEVEL=INFO
+CONTEXT_PATH=/currency-conversion-service-python
+
+# Downstream Currency Exchange Service URL
+EXCHANGE_SERVICE_URL=http://localhost:8000/currency-exchange-service-python
+
+# Resiliency parameters
+HTTP_TIMEOUT_CONNECT=1.5
+HTTP_TIMEOUT_READ=3.5
+HTTP_MAX_RETRIES=3
+GCP_OIDC_AUTH=false
+```
+
+### 4. Run Application Locally
+
+```bash
 python app.py
 ```
 
-Test endpoint:
-```powershell
-curl -i "http://localhost:8100/currency-conversion-service-python/currency-conversion/from/USD/to/INR/quantity/100" -H "X-Correlation-ID: local-conv-01"
+The application will start on port `8100`:
+- **Context Path**: `http://localhost:8100/currency-conversion-service-python`
+- **Health Actuator**: `http://localhost:8100/currency-conversion-service-python/health`
+- **Swagger Documentation**: `http://localhost:8100/currency-conversion-service-python/swagger`
+
+### 5. Run Unit & Integration Tests
+
+```bash
+pytest tests/ -v
 ```
+
+---
+
+## Docker Build & Push (Local)
+
+The service includes a multi-stage `Dockerfile` that installs `git` in the builder stage to clone and install `enterprise-core-python` tag `v1.0.0`.
+
+### 1. Building Docker Image with Tag v1.0.0
+
+Replace `<DOCKER_USERNAME>` with your Docker Hub username.
+
+#### Case A: If `enterprise-core-python` is Public
+```powershell
+docker build `
+  -t <DOCKER_USERNAME>/currency-conversion-service-python:v1.0.0 `
+  -t <DOCKER_USERNAME>/currency-conversion-service-python:latest .
+```
+
+#### Case B: If `enterprise-core-python` is Private
+Pass your GitHub PAT using the `--build-arg GITHUB_TOKEN`:
+```powershell
+docker build `
+  --build-arg GITHUB_TOKEN="<YOUR_GITHUB_PAT>" `
+  -t <DOCKER_USERNAME>/currency-conversion-service-python:v1.0.0 `
+  -t <DOCKER_USERNAME>/currency-conversion-service-python:latest .
+```
+
+> [!TIP]
+> The `Dockerfile` uses `git config url.insteadOf` during the build stage when `GITHUB_TOKEN` is supplied, keeping the token out of the runtime container.
+
+### 2. Running the Docker Container
+
+> [!IMPORTANT]
+> **Why `localhost:8000` does not connect across containers:**
+> When running inside a Docker container, `localhost` (127.0.0.1) refers only to the container's own internal loopback interface, NOT your host OS and NOT other containers. Therefore, `currency-conversion-service` cannot reach `currency-exchange-service` via `localhost:8000` unless they are properly networked.
+
+#### Method 1: Using a Shared Docker Bridge Network (Recommended)
+
+Docker bridge networks provide automatic DNS resolution by container name.
+
+1. **Create a custom bridge network** (if not already created):
+   ```powershell
+   docker network create currency-network
+   ```
+
+2. **Run `currency-exchange-service` on the network**:
+   ```powershell
+   docker run -d --rm `
+     --name currency-exchange-service `
+     --network currency-network `
+     -p 8000:8000 `
+     <DOCKER_USERNAME>/currency-exchange-service-python:latest
+   ```
+
+3. **Run `currency-conversion-service` on the same network**:
+   Pass `EXCHANGE_SERVICE_URL` pointing to `http://currency-exchange-service:8000/currency-exchange-service-python`:
+   ```powershell
+   docker run -d --rm `
+     --name currency-conversion-service `
+     --network currency-network `
+     -p 8100:8100 `
+     -e EXCHANGE_SERVICE_URL="http://currency-exchange-service:8000/currency-exchange-service-python" `
+     <DOCKER_USERNAME>/currency-conversion-service-python:latest
+   ```
+
+#### Method 2: Accessing via Host Gateway (`host.docker.internal`)
+
+If both services are running independently on the default bridge with host ports published (`-p 8000:8000` and `-p 8100:8100`), configure the conversion service to reach exchange service via the Docker host machine:
+
+```powershell
+docker run -d --rm `
+  --name currency-conversion-service `
+  -p 8100:8100 `
+  -e EXCHANGE_SERVICE_URL="http://host.docker.internal:8000/currency-exchange-service-python" `
+  <DOCKER_USERNAME>/currency-conversion-service-python:latest
+```
+
+#### Method 3: Sharing the Container Network Stack (`--network container:...`)
+
+If you want both services to share the exact same `localhost` loopback interface (allowing conversion to reach exchange directly at `localhost:8000`):
+
+1. **Start `currency-exchange-service` exposing both ports**:
+   ```powershell
+   docker run -d --rm `
+     --name currency-exchange-service `
+     -p 8000:8000 -p 8100:8100 `
+     <DOCKER_USERNAME>/currency-exchange-service-python:latest
+   ```
+
+2. **Start `currency-conversion-service` attached directly to the exchange container's network namespace**:
+   ```powershell
+   docker run -d --rm `
+     --name currency-conversion-service `
+     --network container:currency-exchange-service `
+     <DOCKER_USERNAME>/currency-conversion-service-python:latest
+   ```
+
+#### Method 4: Multi-Service Docker Compose (All-in-One)
+
+You can launch both services together with one command from the project root using `docker-compose.yml`:
+
+```powershell
+docker compose up -d
+```
+
+---
+
+#### Verify Container Health & Endpoints
+Verify in another terminal or browser:
+```powershell
+# Check health actuator
+curl http://localhost:8100/currency-conversion-service-python/health
+
+# Query live currency conversion (100 USD to INR)
+curl http://localhost:8100/currency-conversion-service-python/currency-conversion/from/USD/to/INR/quantity/100
+```
+
+Stop the container:
+```powershell
+docker stop currency-conversion-service
+```
+
+### 3. Pushing Docker Image to Docker Hub
+
+```powershell
+# 1. Login to Docker Hub
+docker login
+
+# 2. Push both version tag and latest tag
+docker push <DOCKER_USERNAME>/currency-conversion-service-python:v1.0.0
+docker push <DOCKER_USERNAME>/currency-conversion-service-python:latest
+```
+
+---
+
+## GitHub Actions CI/CD Workflow Setup
+
+The repository includes a ready-to-run GitHub Actions workflow in [`.github/workflows/docker-build.yml`](.github/workflows/docker-build.yml) that automatically builds the Docker image and pushes it to Docker Hub on every push to branch `main` or manual trigger.
+
+### 1. Configure GitHub Secrets
+
+Navigate to your GitHub repository: **Settings** > **Secrets and variables** > **Actions** > **New repository secret**.
+
+Add the following repository secrets:
+
+| Secret Name | Required | Description |
+| :--- | :---: | :--- |
+| `READ_PACKAGES_TOKEN` | **Yes** / *Recommended* | GitHub Personal Access Token (PAT) with `repo` permission to clone private dependencies such as `enterprise-core-python`. |
+| `DOCKER_USERNAME` | **Yes** | Your Docker Hub account username. |
+| `DOCKER_PASSWORD` | **Yes** | Your Docker Hub Personal Access Token (PAT) or password. |
+
+> [!NOTE]
+> `READ_PACKAGES_TOKEN` is passed as the `GITHUB_TOKEN` build argument into Docker to securely authenticate cloning private Git repositories. If not set, it defaults to the workflow's `${{ secrets.GITHUB_TOKEN }}`.
+
+### 2. Workflow Pipeline Details
+
+Below is the workflow configuration located at `.github/workflows/docker-build.yml`:
+
+```yaml
+name: Build and Push Docker Image
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    env:
+      DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+      DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+
+    steps:
+      - name: Checkout Microservice Code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Log in to Docker Hub if secrets are configured
+      - name: Log in to Docker Registry
+        if: ${{ env.DOCKER_USERNAME != '' && env.DOCKER_PASSWORD != '' }}
+        uses: docker/login-action@v3
+        with:
+          username: ${{ env.DOCKER_USERNAME }}
+          password: ${{ env.DOCKER_PASSWORD }}
+
+      # Build & Push Docker image
+      - name: Build and Push Docker Image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: ${{ env.DOCKER_USERNAME != '' && env.DOCKER_PASSWORD != '' }}
+          tags: ${{ env.DOCKER_USERNAME || 'local' }}/${{ github.event.repository.name || 'currency-conversion-service-python' }}:latest
+          build-args: |
+            GITHUB_TOKEN=${{ secrets.READ_PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
+```
+
+### 3. Trigger Build & Push
+
+1. **Commit and push** your changes to the `main` branch:
+   ```bash
+   git add requirements.txt Dockerfile .github/workflows/docker-build.yml README.md
+   git commit -m "build: configure enterprise-core-python v1.0.0 tag and docker workflow"
+   git push origin main
+   ```
+2. Or trigger manually under **Actions** > **Build and Push Docker Image** > **Run workflow**.
+
+---
+
+## API Endpoints Reference
+
+All endpoints are prefixed with `/currency-conversion-service-python`:
+
+### Business Endpoints
+
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `GET` | `/currency-conversion/from/{from}/to/{to}/quantity/{quantity}` | Calculate converted currency amount based on live exchange rates. |
+
+#### Example Request & Response
+```bash
+curl http://localhost:8100/currency-conversion-service-python/currency-conversion/from/USD/to/INR/quantity/100
+```
+```json
+{
+  "id": 10001,
+  "fromCurrency": "USD",
+  "toCurrency": "INR",
+  "conversionMultiple": 83.5,
+  "quantity": 100.0,
+  "totalCalculatedAmount": 8350.0,
+  "environment": "8100 development",
+  "exchangeServiceEnvironment": "8000 development",
+  "correlationId": "c928490a-1123-42e5-bc09-fb4d8724dfa1",
+  "timestamp": "2026-11-24T19:56:50.123456"
+}
+```
+
+### Operational Actuators & Docs
+
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `GET` | `/health` | Comprehensive application health probe. |
+| `GET` | `/health/liveness` | Kubernetes / Cloud Run liveness probe (`{"status": "UP"}`). |
+| `GET` | `/health/readiness` | Kubernetes / Cloud Run readiness probe. |
+| `GET` | `/info` | Service metadata, name, and version. |
+| `GET` | `/metrics` | System, memory, and process metrics. |
+| `GET` | `/swagger` | Interactive Swagger UI documentation. |
+| `GET` | `/openapi.json` | Raw OpenAPI 3.0 specification. |
+
+---
+
+## Troubleshooting & FAQ
+
+### 1. `fatal: could not read Username for 'https://github.com': No such device or address`
+- **Cause**: Pip inside Docker or local terminal is trying to clone a private repository without authentication.
+- **Fix**: Provide your GitHub Personal Access Token with `repo:read` scope as `--build-arg GITHUB_TOKEN="..."` (Docker) or `git+https://${GITHUB_TOKEN}@github.com/...` (local pip).
+
+### 2. Downstream Exchange Service Unavailable (`CCSP_004`)
+- **Cause**: The `currency-exchange-service-python` is not reachable at the configured `EXCHANGE_SERVICE_URL`.
+- **Fix**: Ensure `currency-exchange-service-python` is running on port 8000 (or update `EXCHANGE_SERVICE_URL` in `.env`). The client includes retry logic and a circuit breaker that trips after 5 consecutive failures.
+
+### 3. Updating to a New Version of `enterprise-core-python`
+- Update the tag reference in `requirements.txt`:
+  ```txt
+  enterprise-core-python @ git+https://github.com/amsidhlokhande/enterprise-core-python.git@v1.1.0
+  ```
+- Rebuild Docker image or push to GitHub to trigger CI/CD.

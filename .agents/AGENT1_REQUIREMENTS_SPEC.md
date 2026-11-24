@@ -112,7 +112,7 @@ Both services adhere strictly to the following standardized modular structure:
 ├── .env                  # Environment variables & error code configurations
 ├── app.py                # Main application bootstrap & WSGI runner
 ├── constants.py          # Centralized constants (.env values, error mappings)
-├── requirements.txt      # Python dependencies
+├── requirements.txt      # Python dependencies (imports enterprise-core-python)
 ├── Dockerfile            # Multi-stage production container definition
 ├── README.md             # Publication-grade Mermaid architecture docs
 ├── data/                 # Sample data files (rates CSV)
@@ -123,6 +123,23 @@ Both services adhere strictly to the following standardized modular structure:
     ├── route/            # HTTP routes, actuators & Swagger UI under context path
     ├── modules/          # Data models, DTOs & request/response schemas
     ├── service/          # Core business logic & resilient HTTP client
-    ├── exception/        # Custom domain exceptions & centralized error handler
-    └── utils/            # JSON logger with PII masking, latency interceptors
+    ├── exception/        # Custom domain exceptions (inherits BaseEnterpriseException)
+    └── utils/            # Service-specific utilities
 ```
+
+---
+
+## 6. Shared Enterprise Core Library Architecture (`enterprise-core-python`)
+
+To eliminate code duplication across 36+ microservices and establish uniform governance:
+1. **Shared Foundation Package**: `enterprise-core-python` encapsulates:
+   - Centralized `@app.errorhandler(Exception)` producing the unified enterprise error envelope.
+   - High-performance JSON logging with correlation IDs and automated PII scrubbing (emails, cards, bearer tokens).
+   - Non-blocking latency and correlation tracking interceptors (`X-Correlation-ID`, `X-Response-Time-Ms`).
+   - Standardized Spring Boot-style Actuators blueprint factory (`/health`, `/health/liveness`, `/health/readiness`, `/info`, `/metrics`).
+   - Context-path aware Swagger UI and OpenAPI 3.0 blueprint factory (`/swagger`, `/openapi.json`).
+2. **Standard Microservice Consumption**:
+   Microservices declare `enterprise-core-python>=1.0.0` in `requirements.txt` and instantiate common components in 1-2 lines of configuration.
+3. **Distribution Lifecycle**:
+   - Monorepo/Git: Installed directly via Git tag: `enterprise-core-python @ git+https://github.com/amsidhlokhande/enterprise-core-python.git@v1.0.0`
+   - Enterprise Production: Published to GitHub Releases, JFrog Artifactory, Sonatype Nexus, or Google Cloud Artifact Registry.

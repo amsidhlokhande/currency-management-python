@@ -3,27 +3,11 @@ Custom Domain Exceptions for Currency Exchange Service.
 Driven strictly by constants.py and .env error configurations.
 """
 from typing import List, Optional
+from enterprise_core import BaseEnterpriseException
 import constants
 
-class BaseCESPException(Exception):
-    """
-    Base application exception for Currency Exchange Service Python (CESP).
-    Enforces unified errorCode, functional errorMessage, and technical errorDetailMessage.
-    """
-    def __init__(
-        self,
-        error_code: str,
-        error_message: str,
-        error_detail_message: str,
-        status_code: int = 500,
-        details: Optional[List[str]] = None
-    ):
-        super().__init__(error_message)
-        self.error_code = error_code
-        self.error_message = error_message
-        self.error_detail_message = error_detail_message
-        self.status_code = status_code
-        self.details = details or []
+# Backward compatibility alias
+BaseCESPException = BaseEnterpriseException
 
 
 class RateNotFoundException(BaseCESPException):

@@ -1,4 +1,3 @@
-version: "3.8"
 
 networks:
   currency-mesh:
@@ -9,7 +8,9 @@ services:
     build:
       context: ./currency-exchange-service-python
       dockerfile: Dockerfile
-    image: currency-exchange-service-python:latest
+      args:
+        GITHUB_TOKEN: ${READ_PACKAGES_TOKEN:-${GITHUB_TOKEN:-}}
+    image: ${DOCKER_USERNAME:-amsidhlokhande}/currency-exchange-service-python:latest
     container_name: currency-exchange-service-python
     ports:
       - "8000:8000"
@@ -33,7 +34,9 @@ services:
     build:
       context: ./currency-conversion-service-python
       dockerfile: Dockerfile
-    image: currency-conversion-service-python:latest
+      args:
+        GITHUB_TOKEN: ${READ_PACKAGES_TOKEN:-${GITHUB_TOKEN:-}}
+    image: ${DOCKER_USERNAME:-amsidhlokhande}/currency-conversion-service-python:latest
     container_name: currency-conversion-service-python
     ports:
       - "8100:8100"
