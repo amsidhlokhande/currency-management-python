@@ -15,7 +15,10 @@ from enterprise_core.logging.pii_filter import PIIMaskingFilter
 from enterprise_core.logging.formatter import JsonLogFormatter
 from enterprise_core.interceptor.latency_interceptor import register_latency_interceptors
 from enterprise_core.actuator.actuator_routes import create_actuators_blueprint
-from enterprise_core.swagger.swagger_routes import create_swagger_blueprint
+from enterprise_core.swagger.swagger_routes import (
+    create_swagger_blueprint,
+    ACTUATOR_OPENAPI_PATHS,
+)
 
 __all__ = [
     "BaseEnterpriseException",
@@ -26,6 +29,7 @@ __all__ = [
     "register_latency_interceptors",
     "create_actuators_blueprint",
     "create_swagger_blueprint",
+    "ACTUATOR_OPENAPI_PATHS",
 ]
 
 __version__ = "1.0.0"

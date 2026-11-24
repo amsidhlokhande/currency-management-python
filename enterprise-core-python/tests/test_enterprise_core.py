@@ -133,7 +133,13 @@ def test_swagger_ui_and_openapi_spec(client):
 
     spec = client.get("/test-service/openapi.json")
     assert spec.status_code == 200
-    assert spec.get_json()["openapi"] == "3.0.3"
+    spec_data = spec.get_json()
+    assert spec_data["openapi"] == "3.0.3"
+    assert "/health" in spec_data["paths"]
+    assert "/health/liveness" in spec_data["paths"]
+    assert "/health/readiness" in spec_data["paths"]
+    assert "/info" in spec_data["paths"]
+    assert "/metrics" in spec_data["paths"]
 
 def test_pii_masking_filter():
     pii = PIIMaskingFilter()
