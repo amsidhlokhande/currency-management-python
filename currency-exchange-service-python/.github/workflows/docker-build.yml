@@ -39,4 +39,4 @@ jobs:
           push: ${{ env.DOCKER_USERNAME != '' && env.DOCKER_PASSWORD != '' }}
           tags: ${{ env.DOCKER_USERNAME || 'local' }}/${{ github.event.repository.name || 'currency-exchange-service-python' }}:latest
           build-args: |
-            GITHUB_TOKEN=${{ secrets.READ_PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
+            GITHUB_TOKEN=${{ secrets.READ_PACKAGES_TOKEN }}

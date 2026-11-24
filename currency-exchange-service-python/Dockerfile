@@ -27,10 +27,14 @@ ENV PATH="/opt/venv/bin:$PATH"
 
 COPY requirements.txt .
 RUN if [ -n "$GITHUB_TOKEN" ]; then \
-        git config --global url."https://${GITHUB_TOKEN}@github.com/".insteadOf "https://github.com/"; \
+        git config --global url."https://x-access-token:${GITHUB_TOKEN}@github.com/".insteadOf "https://github.com/"; \
     fi && \
     pip install --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+    (pip install --no-cache-dir -r requirements.txt || ( \
+        echo "Authenticated clone failed or repository is public, retrying without token..." && \
+        git config --global --unset-all url."https://x-access-token:${GITHUB_TOKEN}@github.com/".insteadOf 2>/dev/null || true && \
+        pip install --no-cache-dir -r requirements.txt \
+    ))
 
 # --------------------------------------------------------
 # Stage 2: Hardened Production Runtime
