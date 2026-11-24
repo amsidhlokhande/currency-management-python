@@ -6,4 +6,4 @@
 # enterprise-core-python
 # ==============================================================================
 
-enterprise-core-python @ git+https://github.com/amsidhlokhande/enterprise-core-python.git@v1.0.0
+enterprise-core-python

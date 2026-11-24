@@ -6,6 +6,12 @@ on:
     paths:
       - 'currency-conversion-service-python/**'
   workflow_dispatch:
+    inputs:
+      core_library_version:
+        description: 'Enterprise Core Library Tag or Branch (e.g. v1.2.0 or leave blank for default main)'
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: read
@@ -32,13 +38,30 @@ jobs:
           username: ${{ env.DOCKER_USERNAME }}
           password: ${{ env.DOCKER_PASSWORD }}
 
-      # Step 2: Build & Push
+      # Step 2: Resolve Enterprise Core Library Version (Tag or Main)
+      - name: Resolve Enterprise Core Version
+        id: core_repo
+        run: |
+          VERSION="${{ inputs.core_library_version || vars.ENTERPRISE_CORE_VERSION || '' }}"
+          if [ -n "$VERSION" ]; then
+            echo "repo_url=https://github.com/amsidhlokhande/enterprise-core-python.git@${VERSION}" >> $GITHUB_OUTPUT
+            echo "tag_suffix=${VERSION}" >> $GITHUB_OUTPUT
+            echo "Using pinned enterprise-core-python version: ${VERSION}"
+          else
+            echo "repo_url=https://github.com/amsidhlokhande/enterprise-core-python.git" >> $GITHUB_OUTPUT
+            echo "Using default enterprise-core-python (main branch)"
+          fi
+
+      # Step 3: Build & Push
       - name: Build and Push Docker Image
         uses: docker/build-push-action@v6
         with:
           context: ./currency-conversion-service-python
           file: ./currency-conversion-service-python/Dockerfile
           push: ${{ env.DOCKER_USERNAME != '' && env.DOCKER_PASSWORD != '' }}
-          tags: ${{ env.DOCKER_USERNAME || 'local' }}/currency-conversion-service-python:latest
+          tags: |
+            ${{ env.DOCKER_USERNAME || 'local' }}/currency-conversion-service-python:latest
+            ${{ steps.core_repo.outputs.tag_suffix != '' && format('{0}/currency-conversion-service-python:{1}', env.DOCKER_USERNAME || 'local', steps.core_repo.outputs.tag_suffix) || '' }}
           build-args: |
             GITHUB_TOKEN=${{ secrets.READ_PACKAGES_TOKEN }}
+            ENTERPRISE_CORE_REPO=${{ steps.core_repo.outputs.repo_url }}
