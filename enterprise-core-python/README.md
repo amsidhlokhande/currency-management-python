@@ -14,8 +14,12 @@
 1. [Overview & Architecture](#-overview--architecture)
 2. [What is Bundled in `enterprise_core`](#-what-is-bundled-in-enterprise_core)
 3. [How Microservices Consume This Library](#-how-microservices-consume-this-library)
-4. [Enterprise Artifact Publishing Guide (JFrog, Nexus, Google Artifact Registry)](#-enterprise-artifact-publishing-guide)
-5. [Local Development & Monorepo Testing](#-local-development--monorepo-testing)
+   - [Dependency Specification (`requirements.txt` or `pyproject.toml`)](#1-dependency-specification-requirementstxt-or-pyprojecttoml)
+   - [Application Bootstrap (`app.py`)](#2-in-microservice-application-bootstrap-apppy)
+   - [Domain Exceptions](#3-in-microservice-domain-exceptions)
+4. [Automated Release Workflow](#-automated-release-workflow)
+5. [Enterprise Artifact Publishing Guide (JFrog, Nexus, Google Artifact Registry)](#-enterprise-artifact-publishing-guide)
+6. [Local Development & Monorepo Testing](#-local-development--monorepo-testing)
 
 ---
 
@@ -32,13 +36,15 @@ In large-scale microservice platforms (36+ services), having each microservice w
 flowchart TD
     CoreLib["📦 Internal Library: enterprise-core-python (v1.0.0)<br/>• Centralized Exception Handling (@app.errorhandler)<br/>• PIIMaskingFilter & JsonLogFormatter<br/>• Latency & Correlation-ID Interceptors<br/>• Spring Boot-Style Actuators Factory<br/>• Swagger UI & OpenAPI 3.0 Factory"]
 
-    subgraph RegistryOptions ["🏛️ Enterprise Artifact Registries"]
+    subgraph DistributionChannels ["Distribution Channels"]
+        GitHub["🐙 GitHub Tag / Release (git+https)"]
         JFrog["🐸 JFrog Artifactory"]
-        Nexus["📦 Sonatype Nexus"]
         GAR["☁️ Google Artifact Registry (GCP)"]
     end
 
-    CoreLib -->|Build & Publish via Twine| RegistryOptions
+    CoreLib -->|GitHub Actions Release| GitHub
+    CoreLib -->|Build & Publish via Twine| JFrog
+    CoreLib -->|Build & Publish via Twine| GAR
 
     subgraph Microservices ["🚀 36+ Enterprise Python Microservices"]
         Svc1["💱 currency-exchange-service-python"]
@@ -46,9 +52,9 @@ flowchart TD
         SvcN["⚡ Service 3 to 36..."]
     end
 
-    RegistryOptions -->|pip install enterprise-core-python| Svc1
-    RegistryOptions -->|pip install enterprise-core-python| Svc2
-    RegistryOptions -->|pip install enterprise-core-python| SvcN
+    GitHub -->|pip install git+https| Svc1
+    GitHub -->|pip install git+https| Svc2
+    GitHub -->|pip install git+https| SvcN
 ```
 
 ---
@@ -67,7 +73,34 @@ flowchart TD
 
 ## 🚀 How Microservices Consume This Library
 
-### 1. In Microservice Application Bootstrap (`app.py`)
+### 1. Dependency Specification (`requirements.txt` or `pyproject.toml`)
+
+Other enterprise microservices consume `enterprise-core-python` directly from GitHub using standard PEP 508 direct reference URLs pinned to release tags:
+
+#### In `requirements.txt`:
+```text
+enterprise-core-python @ git+https://github.com/amsidhlokhande/enterprise-core-python.git@v1.0.0
+```
+
+#### With Optional Dependencies (e.g., AWS Boto3):
+```text
+enterprise-core-python[aws] @ git+https://github.com/amsidhlokhande/enterprise-core-python.git@v1.0.0
+```
+
+#### In `pyproject.toml`:
+```toml
+[project]
+dependencies = [
+    "enterprise-core-python @ git+https://github.com/amsidhlokhande/enterprise-core-python.git@v1.0.0",
+]
+```
+
+#### Via `pip install`:
+```bash
+pip install "enterprise-core-python @ git+https://github.com/amsidhlokhande/enterprise-core-python.git@v1.0.0"
+```
+
+### 2. In Microservice Application Bootstrap (`app.py`)
 ```python
 from flask import Flask
 from enterprise_core import (
@@ -113,7 +146,7 @@ def create_app():
     return app
 ```
 
-### 2. In Microservice Domain Exceptions
+### 3. In Microservice Domain Exceptions
 ```python
 from enterprise_core import BaseEnterpriseException
 
@@ -127,6 +160,22 @@ class RateNotFoundException(BaseEnterpriseException):
             details=[f"Pair {from_curr}->{to_curr} is not supported."]
         )
 ```
+
+---
+
+## 🚀 Automated Release Workflow
+
+The library includes an automated GitHub Actions release workflow in [`.github/workflows/release.yml`](.github/workflows/release.yml):
+
+- **Triggers**:
+  - Pushes matching git tags: `'v*.*.*'`
+  - Direct pushes or merges to `main` branch
+  - Manual triggers via `workflow_dispatch`
+- **Release Automation**:
+  1. **Unit Testing**: Runs test suite under pytest (`pip install -e .` & `pytest tests/ -v`).
+  2. **Distribution Packaging**: Builds standard wheel (`.whl`) and source archive (`.tar.gz`) via `python -m build`.
+  3. **Metadata Verification**: Audits package integrity using `twine check dist/*`.
+  4. **GitHub Release Publication**: Automatically determines the release tag (`refs/tags/v*` or extracts version from `pyproject.toml` such as `v1.0.0`), generates release notes, and attaches all distribution artifacts via `softprops/action-gh-release@v2`.
 
 ---
 

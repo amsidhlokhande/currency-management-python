@@ -1,6 +1,6 @@
 # ========================================================
 # Dockerfile: Currency Exchange Service (Python / Flask)
-# Runtime: Python 3.15.2 / Python 3.12-slim Multi-Stage Build
+# Runtime: Python 3.12-slim Multi-Stage Build
 # Context Path: /currency-exchange-service-python
 # ========================================================
 
@@ -13,7 +13,11 @@ FROM ${PYTHON_IMAGE} AS builder
 
 WORKDIR /build
 
+# GitHub Token for private repository cloning (if applicable)
+ARG GITHUB_TOKEN
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
     build-essential \
     curl \
     && rm -rf /var/lib/apt/lists/*
@@ -21,10 +25,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# Copy dependencies and internal enterprise shared library wheel
-COPY requirements.txt enterprise_core_python-*.whl* ./
-RUN pip install --upgrade pip && \
-    pip install --no-cache-dir --find-links . -r requirements.txt
+COPY requirements.txt .
+RUN if [ -n "$GITHUB_TOKEN" ]; then \
+        git config --global url."https://${GITHUB_TOKEN}@github.com/".insteadOf "https://github.com/"; \
+    fi && \
+    pip install --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
 
 # --------------------------------------------------------
 # Stage 2: Hardened Production Runtime
@@ -54,7 +60,7 @@ ENV PATH="/opt/venv/bin:$PATH" \
 # Copy application source
 COPY --chown=appuser:appgroup . /app
 
-USER appuser
+USER 10001
 
 EXPOSE 8000
 
