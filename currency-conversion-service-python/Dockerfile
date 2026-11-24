@@ -15,6 +15,7 @@ WORKDIR /build
 
 # GitHub Token for private repository cloning (if applicable)
 ARG GITHUB_TOKEN
+ARG ENTERPRISE_CORE_REPO=https://github.com/amsidhlokhande/enterprise-core-python.git
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
@@ -28,17 +29,18 @@ ENV PATH="/opt/venv/bin:$PATH"
 COPY requirements.txt .
 RUN pip install --upgrade pip && \
     if [ -n "$GITHUB_TOKEN" ]; then \
-        echo "Configuring authenticated Git access for dependency installation..." && \
+        echo "Configuring authenticated Git access for enterprise-core-python..." && \
         git config --global url."https://x-access-token:${GITHUB_TOKEN}@github.com/".insteadOf "https://github.com/" && \
-        (pip install --no-cache-dir -r requirements.txt || ( \
+        (pip install --no-cache-dir "git+${ENTERPRISE_CORE_REPO}" || ( \
             echo "Authenticated clone failed (token may lack 'repo' scope or repo is public). Retrying via public access..." && \
             rm -f ~/.gitconfig /root/.gitconfig && \
-            pip install --no-cache-dir -r requirements.txt \
+            pip install --no-cache-dir "git+${ENTERPRISE_CORE_REPO}" \
         )); \
     else \
-        echo "No GITHUB_TOKEN supplied. Installing dependencies from public repositories..." && \
-        pip install --no-cache-dir -r requirements.txt; \
-    fi
+        echo "Installing enterprise-core-python from centralized repository..." && \
+        pip install --no-cache-dir "git+${ENTERPRISE_CORE_REPO}"; \
+    fi && \
+    pip install --no-cache-dir -r requirements.txt
 
 # --------------------------------------------------------
 # Stage 2: Hardened Production Runtime
