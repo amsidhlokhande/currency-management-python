@@ -7,7 +7,7 @@ services:
     build:
       context: ./currency-exchange-service-python
       dockerfile: Dockerfile
-    image: ${REGISTRY:-amsidhlokhande}/currency-exchange-service-python:${TAG:-v1.0.1}
+    image: ${REGISTRY:-amsidhlokhande}/currency-exchange-service-python:${TAG:-latest}
     container_name: currency-exchange-service-python
     ports:
       - "8000:8000"
@@ -31,7 +31,7 @@ services:
     build:
       context: ./currency-conversion-service-python
       dockerfile: Dockerfile
-    image: ${REGISTRY:-amsidhlokhande}/currency-conversion-service-python:${TAG:-v1.0.1}
+    image: ${REGISTRY:-amsidhlokhande}/currency-conversion-service-python:${TAG:-latest}
     container_name: currency-conversion-service-python
     ports:
       - "8100:8100"
