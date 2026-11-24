@@ -14,6 +14,18 @@ Write-Host "=========================================================" -Foregrou
 Write-Host "  Agent 3: Multi-Stage Docker Build & Push Pipeline" -ForegroundColor Cyan
 Write-Host "=========================================================" -ForegroundColor Cyan
 
+# 0. Build & Distribute Shared Enterprise Core Library Wheel
+Write-Host "`n[0/4] Packaging enterprise-core-python shared library into wheel..." -ForegroundColor Green
+$coreDist = Join-Path $PSScriptRoot "enterprise-core-python\dist"
+if (-not (Test-Path $coreDist)) { New-Item -ItemType Directory -Path $coreDist -Force | Out-Null }
+pip wheel "$PSScriptRoot\enterprise-core-python" --no-deps -w $coreDist --quiet
+if ($LASTEXITCODE -ne 0) { throw "enterprise-core-python wheel packaging failed!" }
+
+# Distribute wheel to service contexts for local monorepo container builds
+Copy-Item "$coreDist\*.whl" "$PSScriptRoot\currency-exchange-service-python\" -Force
+Copy-Item "$coreDist\*.whl" "$PSScriptRoot\currency-conversion-service-python\" -Force
+Write-Host "Successfully packaged and distributed enterprise-core-python wheel." -ForegroundColor Cyan
+
 # 1. Build Currency Exchange Service
 Write-Host "`n[1/4] Building Currency Exchange Service image..." -ForegroundColor Green
 docker build -t "currency-exchange-service-python:$Tag" ./currency-exchange-service-python

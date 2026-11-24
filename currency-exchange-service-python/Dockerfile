@@ -21,9 +21,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-COPY requirements.txt .
+# Copy dependencies and internal enterprise shared library wheel
+COPY requirements.txt enterprise_core_python-*.whl* ./
 RUN pip install --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+    pip install --no-cache-dir --find-links . -r requirements.txt
 
 # --------------------------------------------------------
 # Stage 2: Hardened Production Runtime
