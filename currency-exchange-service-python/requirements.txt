@@ -1,9 +1,10 @@
-# Enterprise Core Shared Library
-enterprise-core-python>=1.0.0
+# ==============================================================================
+# Currency Exchange Service - Dependencies
+# ==============================================================================
+# All common web, WSGI, logging, HTTP client, and testing dependencies
+# and their security-vetted versions are managed centrally by:
+# enterprise-core-python
+# ==============================================================================
 
-# Service-Specific Dependencies
-boto3>=1.34.0
-pytest>=8.0.0
-gunicorn>=23.0.0
-waitress>=3.0.0
-requests>=2.31.0
+enterprise-core-python
+boto3

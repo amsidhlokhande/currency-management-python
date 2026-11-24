@@ -1,9 +1,9 @@
-# Enterprise Core Shared Library
-enterprise-core-python>=1.0.0
+# ==============================================================================
+# Currency Conversion Service - Dependencies
+# ==============================================================================
+# All common web, WSGI, logging, HTTP client, and testing dependencies
+# and their security-vetted versions are managed centrally by:
+# enterprise-core-python
+# ==============================================================================
 
-# Service-Specific Dependencies
-requests>=2.31.0
-urllib3>=2.0.0
-pytest>=8.0.0
-gunicorn>=23.0.0
-waitress>=3.0.0
+enterprise-core-python
