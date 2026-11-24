@@ -1,0 +1,44 @@
+# ==============================================================================
+# Centralized Dependency Constraints File (BOM - Bill of Materials)
+# Repository: currency-management-python
+# Architecture: Centralized Constraint Dependency Management
+# ==============================================================================
+#
+# PURPOSE:
+# This file acts as the single source of truth for library versions and security
+# patches across all Python microservices (identical to Maven's <dependencyManagement>
+# in a parent POM). Individual microservices declare packages without hardcoded versions
+# in their requirements.txt; pip enforces the exact versions locked below.
+#
+# CVE RESPONSE WORKFLOW:
+# When an OSS vulnerability is identified in any dependency (e.g., urllib3, requests, Flask),
+# update the pinned version ONLY in this file and trigger a rebuild of the services.
+# ==============================================================================
+
+# Core Web Framework & WSGI
+Flask==3.1.0
+Werkzeug==3.1.3
+gunicorn==23.0.0
+waitress==3.0.1
+
+# HTTP Clients & Network Security
+requests==2.32.3
+urllib3==2.2.3
+certifi==2024.8.30
+idna==3.10
+charset-normalizer==3.4.0
+
+# Cloud SDK & Storage
+boto3==1.35.40
+botocore==1.35.40
+jmespath==1.0.1
+s3transfer==0.10.3
+
+# Observability & Structured Logging
+python-json-logger==2.0.7
+
+# Testing & Quality Assurance
+pytest==8.3.3
+iniconfig==2.0.0
+packaging==24.1
+pluggy==1.5.0
