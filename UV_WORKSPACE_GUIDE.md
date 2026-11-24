@@ -15,43 +15,47 @@ This branch (`uv-workspace-dependency-management`) implements **Solution 3**: us
 
 | Feature | Java Spring Boot (Parent POM / BOM) | Python uv Workspace (`uv-workspace-dependency-management`) |
 | :--- | :--- | :--- |
-| **Central Declaration** | `<dependencyManagement>` in root `pom.xml` | `[tool.uv] override-dependencies = [...]` in root `pyproject.toml` |
-| **Service Declarations** | Child `pom.xml` lists `<dependency>` without `<version>` | Service `requirements.txt` / `pyproject.toml` lists package name without version (`flask`, `requests`, `boto3`) |
+| **Central Declaration** | `<dependencyManagement>` in root `pom.xml` | Central `pyproject.toml` + `overrides.txt` / `uv.lock` |
+| **Service Declarations** | Child `pom.xml` lists `<dependency>` without `<version>` | Service `requirements.txt` lists package name without version (`flask`, `requests`, `boto3`) |
+| **Microservice Boilerplate** | Child `pom.xml` only | **Zero added files!** No `pyproject.toml`, no `overrides.txt` in microservice |
 | **Deterministic Lock** | Maven reactor resolution / BOM | Unified `uv.lock` locking exact hashes and versions across all 36+ services |
 | **Vulnerability Patching** | Bump version once in parent `pom.xml` | Bump version once in root `pyproject.toml` / `overrides.txt` and run `uv lock` |
-| **Resolution Speed** | 10–30s per build | **< 1.5s** (written in Rust, up to 100x faster than standard pip) |
+| **Resolution Speed** | 10–30s per build | **< 0.5s** (written in Rust, up to 100x faster than standard pip) |
 | **Container Build** | `mvn clean package` fetches from BOM | Docker multi-stage build uses `COPY --from=ghcr.io/astral-sh/uv:latest` + `uv pip install --override overrides.txt` |
 
 ---
 
 ## 3. How Centralized Governance Works
 
-### 3.1 Root Workspace `pyproject.toml`
-The root file declares the workspace members and enforces versions for all services:
+### 3.1 Central BOM `pyproject.toml` (In Root Directory Only)
+The root file acts as the single enterprise Bill of Materials (BOM) locking all versions:
 
 ```toml
-[tool.uv.workspace]
-members = [
-    "currency-exchange-service-python",
-    "currency-conversion-service-python"
-    # Easily add all 36+ microservices here
-]
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
 
-[tool.uv]
-override-dependencies = [
+[project]
+name = "enterprise-dependencies-bom"
+version = "1.0.0"
+description = "Enterprise Centralized Dependency BOM governed by uv"
+requires-python = ">=3.10"
+dependencies = [
     "Flask==3.1.0",
+    "werkzeug==3.1.3",
+    "python-json-logger==2.0.7",
     "requests==2.32.3",
     "urllib3==2.2.3",
     "gunicorn==23.0.0",
     "waitress==3.0.1",
-    "boto3==1.35.40",
-    "botocore==1.35.40",
     "pytest==8.3.3",
-    "python-json-logger==2.0.7",
-    "Werkzeug==3.1.3",
-    "Jinja2==3.1.6"
+    "boto3==1.35.40",
+    "certifi==2024.8.30",
+    "idna==3.10",
+    "charset-normalizer==3.4.0",
 ]
 ```
+
 
 ### 3.2 Microservice `requirements.txt` (Completely Versionless!)
 Neither service specifies versions. They declare strictly what functional libraries they require:

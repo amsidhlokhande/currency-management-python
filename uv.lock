@@ -2,27 +2,6 @@ version = 1
 revision = 5
 requires-python = ">=3.10"
 
-[manifest]
-members = [
-    "currency-conversion-service-python",
-    "currency-exchange-service-python",
-    "currency-management-workspace",
-]
-overrides = [
-    { name = "boto3", specifier = "==1.35.40" },
-    { name = "certifi", specifier = "==2024.8.30" },
-    { name = "charset-normalizer", specifier = "==3.4.0" },
-    { name = "flask", specifier = "==3.1.0" },
-    { name = "gunicorn", specifier = "==23.0.0" },
-    { name = "idna", specifier = "==3.10" },
-    { name = "pytest", specifier = "==8.3.3" },
-    { name = "python-json-logger", specifier = "==2.0.7" },
-    { name = "requests", specifier = "==2.32.3" },
-    { name = "urllib3", specifier = "==2.2.3" },
-    { name = "waitress", specifier = "==3.0.1" },
-    { name = "werkzeug", specifier = "==3.1.3" },
-]
-
 [[package]]
 name = "blinker"
 version = "1.9.0"
@@ -157,59 +136,39 @@ wheels = [
 ]
 
 [[package]]
-name = "currency-conversion-service-python"
-version = "1.0.0"
-source = { editable = "currency-conversion-service-python" }
-dependencies = [
-    { name = "flask" },
-    { name = "gunicorn" },
-    { name = "pytest" },
-    { name = "python-json-logger" },
-    { name = "requests" },
-    { name = "urllib3" },
-    { name = "waitress" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "flask" },
-    { name = "gunicorn" },
-    { name = "pytest" },
-    { name = "python-json-logger" },
-    { name = "requests" },
-    { name = "urllib3" },
-    { name = "waitress" },
-]
-
-[[package]]
-name = "currency-exchange-service-python"
-version = "1.0.0"
-source = { editable = "currency-exchange-service-python" }
-dependencies = [
-    { name = "boto3" },
-    { name = "flask" },
-    { name = "gunicorn" },
-    { name = "pytest" },
-    { name = "python-json-logger" },
-    { name = "requests" },
-    { name = "waitress" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "boto3" },
-    { name = "flask" },
-    { name = "gunicorn" },
-    { name = "pytest" },
-    { name = "python-json-logger" },
-    { name = "requests" },
-    { name = "waitress" },
-]
-
-[[package]]
-name = "currency-management-workspace"
+name = "enterprise-dependencies-bom"
 version = "1.0.0"
 source = { editable = "." }
+dependencies = [
+    { name = "boto3" },
+    { name = "certifi" },
+    { name = "charset-normalizer" },
+    { name = "flask" },
+    { name = "gunicorn" },
+    { name = "idna" },
+    { name = "pytest" },
+    { name = "python-json-logger" },
+    { name = "requests" },
+    { name = "urllib3" },
+    { name = "waitress" },
+    { name = "werkzeug" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "boto3", specifier = "==1.35.40" },
+    { name = "certifi", specifier = "==2024.8.30" },
+    { name = "charset-normalizer", specifier = "==3.4.0" },
+    { name = "flask", specifier = "==3.1.0" },
+    { name = "gunicorn", specifier = "==23.0.0" },
+    { name = "idna", specifier = "==3.10" },
+    { name = "pytest", specifier = "==8.3.3" },
+    { name = "python-json-logger", specifier = "==2.0.7" },
+    { name = "requests", specifier = "==2.32.3" },
+    { name = "urllib3", specifier = "==2.2.3" },
+    { name = "waitress", specifier = "==3.0.1" },
+    { name = "werkzeug", specifier = "==3.1.3" },
+]
 
 [[package]]
 name = "exceptiongroup"
